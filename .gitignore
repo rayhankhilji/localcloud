@@ -1,0 +1,4 @@
+node_modules/
+.localcloud/
+*.log
+coverage/

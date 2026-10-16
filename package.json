@@ -1,0 +1,42 @@
+{
+  "name": "localcloud-cli",
+  "version": "0.1.0",
+  "description": "Share localhost from anywhere — built for cloud coding agents (Claude Code, Codex, Cursor, Devin, …). One command, public HTTPS URL, works through locked-down egress proxies.",
+  "type": "module",
+  "bin": {
+    "localcloud": "bin/localcloud.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/",
+    "relay": "node bin/localcloud.js relay"
+  },
+  "engines": {
+    "node": ">=18.18"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "keywords": [
+    "localhost",
+    "tunnel",
+    "ngrok",
+    "preview",
+    "claude-code",
+    "codex",
+    "cursor",
+    "devin",
+    "ai-agents",
+    "dev-server"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rayhankhilji/localcloud.git"
+  },
+  "license": "MIT"
+}
