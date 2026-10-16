@@ -1,0 +1,45 @@
+# localcloud relay + Caddy (automatic HTTPS) for any VPS with Docker.
+# Full guide: docs/self-hosting.md#any-vps-docker-compose--caddy
+#
+#   cp .env.example .env    # set LOCALCLOUD_DOMAIN and ACME_EMAIL
+#   docker compose up -d
+#
+# DNS: point both  tunnel.example.com  and  *.tunnel.example.com  (A/AAAA) at this server.
+# Caddy obtains a certificate per tunnel hostname on first visit (on-demand TLS),
+# asking the relay first so only live tunnels ever get one. For a single wildcard
+# certificate instead, see ../caddy/ (DNS challenge).
+
+services:
+  relay:
+    image: ghcr.io/rayhankhilji/localcloud:latest
+    # Or build from source instead of pulling:
+    # build: ../..
+    restart: unless-stopped
+    environment:
+      LOCALCLOUD_DOMAIN: ${LOCALCLOUD_DOMAIN:?set LOCALCLOUD_DOMAIN in .env}
+      LOCALCLOUD_RELAY_TOKEN: ${LOCALCLOUD_RELAY_TOKEN:-}
+      PORT: "8080"
+    # Not published: only Caddy talks to the relay.
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - relay
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      LOCALCLOUD_DOMAIN: ${LOCALCLOUD_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

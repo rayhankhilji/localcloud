@@ -1,0 +1,32 @@
+{
+  "name": "localcloud",
+  "displayName": "localcloud",
+  "description": "Share localhost dev servers at public HTTPS URLs, from cloud sessions or your laptop. MCP tools + a skill + auto-sharing in cloud sessions.",
+  "author": {
+    "name": "localcloud",
+    "url": "https://github.com/rayhankhilji/localcloud"
+  },
+  "homepage": "https://github.com/rayhankhilji/localcloud/tree/main/docs/agents/claude-code.md",
+  "repository": "https://github.com/rayhankhilji/localcloud",
+  "license": "MIT",
+  "keywords": ["localhost", "tunnel", "preview", "dev-server", "ngrok-alternative", "mcp"],
+  "mcpServers": {
+    "localcloud": {
+      "command": "npx",
+      "args": ["-y", "localcloud-cli", "mcp"]
+    }
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"$CLAUDE_CODE_REMOTE\" = \"true\" ]; then npx -y localcloud-cli start || true; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

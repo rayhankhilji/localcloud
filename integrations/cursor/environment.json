@@ -1,0 +1,11 @@
+{
+  "install": "npm install && npm install -g localcloud-cli",
+  "terminals": [
+    {
+      "name": "localcloud",
+      "command": "localcloud start || npx -y localcloud-cli start",
+      "description": "Auto-shares every dev server at a public HTTPS URL. Run `localcloud ls` to see the URLs."
+    }
+  ],
+  "egressAllowlist": ["relay.example.com"]
+}

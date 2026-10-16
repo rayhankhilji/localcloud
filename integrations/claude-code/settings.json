@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ \"$CLAUDE_CODE_REMOTE\" = \"true\" ]; then npx -y localcloud-cli start || true; fi"
+          }
+        ]
+      }
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "localcloud": {
+      "source": {
+        "source": "github",
+        "repo": "rayhankhilji/localcloud"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "localcloud@localcloud": true
+  }
+}

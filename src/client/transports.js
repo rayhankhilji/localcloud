@@ -33,6 +33,8 @@ export class WsClientTransport extends EventEmitter {
       });
       const fail = (err) => {
         cleanup();
+        // terminate() emits a late 'error' that would otherwise crash the process.
+        ws.on('error', () => {});
         try {
           ws.terminate();
         } catch {}
@@ -70,9 +72,19 @@ export class WsClientTransport extends EventEmitter {
     if (this.ws.readyState === WebSocket.OPEN) this.ws.send(buf);
   }
 
+  /** Resolves once queued frames have been written (or after `ms`). */
+  async drain(ms = 1000) {
+    const end = Date.now() + ms;
+    while (this.ws.readyState === WebSocket.OPEN && this.ws.bufferedAmount > 0 && Date.now() < end) await sleep(10);
+  }
+
   close() {
     try {
-      this.ws.terminate();
+      // A clean close frame lets the relay notice immediately; terminate if it doesn't answer.
+      if (this.ws.readyState === WebSocket.OPEN) {
+        this.ws.close();
+        setTimeout(() => this.ws.terminate(), 1000).unref();
+      } else this.ws.terminate();
     } catch {}
   }
 }
@@ -182,11 +194,21 @@ export class HttpClientTransport extends EventEmitter {
     }
   }
 
+  /** Resolves once queued frames have been posted (or after `ms`). */
+  async drain(ms = 1000) {
+    const end = Date.now() + ms;
+    while (!this.closed && (this.queue.length || this.flushing) && Date.now() < end) await sleep(10);
+  }
+
   close() {
     if (this.closed) return;
     this.closed = true;
     this.queue = [];
     this.emit('close');
-    this.agent.destroy();
+    // Tell the relay right away instead of letting the session time out, then drop our sockets.
+    const url = apiUrl(this.relay, `/http/close?sid=${encodeURIComponent(this.sid)}`);
+    request(url, { method: 'POST', agent: this.agent, headers: { 'content-length': 0, 'user-agent': UA }, timeout: 2000 })
+      .catch(() => {})
+      .finally(() => this.agent.destroy());
   }
 }

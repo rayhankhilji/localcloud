@@ -1,0 +1,58 @@
+# systemd unit for a localcloud relay on bare metal / a plain VM.
+# Full guide: docs/self-hosting.md#bare-metal-systemd
+#
+#   sudo npm install -g localcloud-cli            # Node.js 18.18+ required
+#   sudo cp localcloud-relay.service /etc/systemd/system/
+#   sudo mkdir -p /etc/localcloud && sudo cp relay.env.example /etc/localcloud/relay.env   # edit it
+#   sudo systemctl daemon-reload && sudo systemctl enable --now localcloud-relay
+#   journalctl -u localcloud-relay -f
+#
+# By default the relay listens on 127.0.0.1:8080 behind Caddy or nginx (see
+# ../caddy and ../nginx), which terminate TLS. Run exactly one instance.
+
+[Unit]
+Description=localcloud relay
+Documentation=https://github.com/rayhankhilji/localcloud/blob/main/docs/self-hosting.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8080
+# LOCALCLOUD_DOMAIN, LOCALCLOUD_RELAY_TOKEN, ... (overrides the lines above)
+EnvironmentFile=-/etc/localcloud/relay.env
+# `npm install -g` puts the binary in /usr/bin or /usr/local/bin depending on
+# how Node.js was installed; `env` finds either. Use an absolute path if your
+# node lives elsewhere (nvm, asdf, ...): ExecStart=/path/to/node /path/to/localcloud relay
+ExecStart=/usr/bin/env localcloud relay
+Restart=always
+RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+# Each tunnel, browser tab and agent connection is a socket.
+LimitNOFILE=65536
+
+# Hardening: the relay needs no disk, no privileges and no home directory.
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Terminating TLS in the relay itself on :443 (LOCALCLOUD_TLS_CERT/KEY, PORT=443)?
+# Uncomment, and make the key readable by the service (e.g. LoadCredential=).
+#AmbientCapabilities=CAP_NET_BIND_SERVICE
+#CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

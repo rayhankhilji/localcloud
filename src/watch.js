@@ -111,7 +111,9 @@ export class PortWatcher extends EventEmitter {
   }
 
   async start() {
+    this.stopped = false;
     const now = await listeningPorts();
+    if (this.stopped) return; // stop() was called while we were reading the port table
     this.baseline = new Set(now.keys());
     for (const [port, addr] of now) {
       this.known.add(port);
@@ -140,6 +142,7 @@ export class PortWatcher extends EventEmitter {
   }
 
   stop() {
+    this.stopped = true;
     clearTimeout(this.timer);
     this.timer = null;
   }

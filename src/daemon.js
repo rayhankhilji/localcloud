@@ -57,6 +57,15 @@ export function daemonRequest(method, route, body, timeout = 30_000) {
 
 export const daemonStatus = () => daemonRequest('GET', '/status', undefined, 5000).catch(() => null);
 
+/** Identifies the settings a daemon runs with, without exposing the token. */
+function configId(cfg) {
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify([cfg.relay, cfg.token || '', cfg.transport || 'auto']))
+    .digest('hex')
+    .slice(0, 16);
+}
+
 /**
  * Make sure a daemon for this relay is running. Returns its status.
  * @param {{relay: string, token?: string, transport?: string}} cfg
@@ -64,7 +73,8 @@ export const daemonStatus = () => daemonRequest('GET', '/status', undefined, 500
 export async function ensureDaemon(cfg) {
   let status = await daemonStatus();
   let restarted = false;
-  if (status && (status.relay !== cfg.relay || status.version !== VERSION)) {
+  const stale = status && (status.relay !== cfg.relay || status.version !== VERSION || (status.configId && status.configId !== configId(cfg)) || status.fatal);
+  if (stale) {
     await daemonRequest('POST', '/shutdown').catch(() => {});
     await waitFor(async () => !(await daemonStatus()), 5000);
     status = null;
@@ -72,13 +82,10 @@ export async function ensureDaemon(cfg) {
   }
   if (status) return { status, started: false, restarted };
 
-  const { home, log, socket } = paths();
-  fs.mkdirSync(home, { recursive: true });
-  if (process.platform !== 'win32') {
-    try {
-      fs.unlinkSync(socket);
-    } catch {}
-  }
+  const { home, log } = paths();
+  fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+  // A stale socket file is cleaned up by the daemon itself (see runDaemon), so two
+  // CLIs racing to start it can't orphan a live daemon by unlinking its socket.
   const out = fs.openSync(log, 'a');
   const child = spawn(process.execPath, [CLI, '__daemon'], {
     detached: true,
@@ -108,6 +115,7 @@ export async function runDaemon() {
   const { socket, state } = paths();
   const log = (msg) => console.log(`${new Date().toISOString()} ${msg}`);
   const client = new Client({ relay: cfg.relay, token: cfg.token, transport: cfg.transport });
+  const id = configId(cfg);
   let watcher = null;
   const watchErrors = new Map();
 
@@ -162,6 +170,8 @@ export async function runDaemon() {
   const status = () => ({
     pid: process.pid,
     version: VERSION,
+    configId: id,
+    fatal: client.fatalError?.message || null,
     ...client.status,
     watch: !!watcher,
     watchSupported: watchSupported(),
@@ -183,6 +193,7 @@ export async function runDaemon() {
     try {
       if (req.method === 'GET' && req.url === '/status') return json(200, status());
       if (req.method === 'POST' && req.url === '/share') {
+        if (body.target === undefined || body.target === null || body.target === '') return json(400, { error: 'missing target' });
         const t = await shareWithTimeout(String(body.target), body);
         return json(200, { tunnel: t, transport: client.transport?.kind });
       }
@@ -210,7 +221,10 @@ export async function runDaemon() {
     }
   });
 
+  let stopping = false;
   const shutdown = async (why) => {
+    if (stopping) return;
+    stopping = true;
     log(`shutting down (${why})`);
     watcher?.stop();
     await client.close().catch(() => {});
@@ -222,11 +236,31 @@ export async function runDaemon() {
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGHUP', () => {}); // outlive the terminal that started us
+  process.on('unhandledRejection', (err) => log(`unexpected error: ${err?.stack || err}`));
 
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(socket, resolve);
-  });
+  const listen = () =>
+    new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(socket, () => {
+        server.off('error', reject);
+        resolve();
+      });
+    });
+  try {
+    await listen();
+  } catch (err) {
+    if (err.code !== 'EADDRINUSE') throw err;
+    if (await daemonStatus()) {
+      log('another daemon is already running; exiting');
+      process.exit(0);
+    }
+    // Left behind by a daemon that crashed or was killed.
+    try {
+      fs.unlinkSync(socket);
+    } catch {}
+    await listen();
+  }
   if (process.platform !== 'win32') fs.chmodSync(socket, 0o600);
   log(`localcloud daemon ${VERSION} ready (pid ${process.pid}, relay ${cfg.relay})`);
 }

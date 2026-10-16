@@ -1,0 +1,29 @@
+# Render Blueprint for a localcloud relay. Full guide: docs/self-hosting.md#render
+#
+# Dashboard → New → Blueprint → pick your fork, and set "Blueprint Path" to
+# deploy/render/render.yaml. With no further setup you get cookie routing:
+#   relay:   https://<service>.onrender.com
+#   tunnels: https://<service>.onrender.com/__localcloud/t/<id>
+# Add a wildcard custom domain later for https://<id>.<your-domain> URLs.
+
+services:
+  - type: web
+    name: localcloud-relay
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Free instances spin down when idle and restart often, which drops every
+    # tunnel. Use a paid instance type for anything you rely on.
+    plan: starter
+    # The relay keeps all state in memory: exactly one instance, no autoscaling.
+    numInstances: 1
+    healthCheckPath: /__localcloud/health
+    autoDeploy: true
+    envVars:
+      # Leave empty for cookie routing; set to e.g. tunnel.example.com after adding
+      # tunnel.example.com and *.tunnel.example.com as custom domains on this service.
+      - key: LOCALCLOUD_DOMAIN
+        sync: false
+      # Optional: require clients to send this as LOCALCLOUD_TOKEN.
+      - key: LOCALCLOUD_RELAY_TOKEN
+        sync: false

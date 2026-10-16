@@ -1,0 +1,9 @@
+{
+  "context_servers": {
+    "localcloud": {
+      "command": "npx",
+      "args": ["-y", "localcloud-cli", "mcp"],
+      "env": {}
+    }
+  }
+}

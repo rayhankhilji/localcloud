@@ -1,0 +1,54 @@
+# Fly.io config for a localcloud relay. Full guide: docs/self-hosting.md#flyio
+#
+# From the repository root:
+#   fly apps create <your-app>                       # then set `app` below to the same name
+#   fly secrets set LOCALCLOUD_RELAY_TOKEN=$(openssl rand -hex 24) -c deploy/fly/fly.toml   # optional
+#   fly deploy . -c deploy/fly/fly.toml --ha=false   # --ha=false: one machine, not two
+#
+# The relay keeps every tunnel in memory, so this file pins it to exactly one
+# always-on machine: never scale it past 1 and never let it auto-stop.
+
+app = "localcloud-relay"        # change to your app name (must be globally unique on Fly)
+primary_region = "iad"          # pick the region closest to your agents: fly platform regions
+kill_signal = "SIGTERM"
+kill_timeout = "10s"
+
+[build]
+  # Resolved relative to this file. Alternatively skip the build entirely:
+  #   image = "ghcr.io/rayhankhilji/localcloud:latest"
+  dockerfile = "../../Dockerfile"
+
+[env]
+  PORT = "8080"
+  # Subdomain routing: tunnels at https://<id>.<domain>. Needs the wildcard
+  # certificate described in the guide. Leave unset to use cookie routing on
+  # https://<app>.fly.dev/__localcloud/t/<id>, which works with no DNS at all.
+  # LOCALCLOUD_DOMAIN = "tunnel.example.com"
+  # Require clients to present a token: set it as a secret, not here.
+  #   fly secrets set LOCALCLOUD_RELAY_TOKEN=...
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"    # tunnels are long-lived connections; never stop
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    # Every connected agent holds a WebSocket (or a long poll) open, and every
+    # browser tab adds more. Count connections, not requests, and set it high.
+    type = "connections"
+    soft_limit = 5000
+    hard_limit = 10000
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/__localcloud/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

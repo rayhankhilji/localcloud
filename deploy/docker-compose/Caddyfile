@@ -1,0 +1,29 @@
+# Caddy in front of a localcloud relay, with on-demand TLS.
+#
+# Caddy fetches a certificate the first time a hostname is visited. Before it
+# does, it asks the relay (/__localcloud/ask), which says yes only for the relay
+# domain itself and for tunnels that are live right now, so random hostnames
+# can't make Caddy request certificates.
+#
+# Let's Encrypt allows 50 new certificates per registered domain per week. Each
+# new random tunnel name uses one; reused names (localcloud --name my-app) use
+# the cached certificate. If you outgrow that, switch to ../caddy/Caddyfile,
+# which uses one wildcard certificate via the DNS challenge.
+{
+	email {$ACME_EMAIL}
+	on_demand_tls {
+		ask http://relay:8080/__localcloud/ask
+	}
+}
+
+https:// {
+	tls {
+		on_demand
+	}
+	reverse_proxy relay:8080 {
+		# Stream responses (long polls, server-sent events) without buffering.
+		flush_interval -1
+		# Keep WebSockets open for a while across Caddy config reloads.
+		stream_close_delay 5m
+	}
+}

@@ -1,0 +1,26 @@
+# Prepares the GitHub Copilot coding agent's environment.
+# Docs: https://docs.github.com/copilot/how-tos/use-copilot-agents/coding-agent/customize-the-agent-environment
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths: [.github/workflows/copilot-setup-steps.yml]
+  pull_request:
+    paths: [.github/workflows/copilot-setup-steps.yml]
+
+jobs:
+  # The job MUST be called copilot-setup-steps or Copilot won't pick it up.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Install localcloud so the agent can share dev servers without downloading it mid-task.
+      - run: npm install -g localcloud-cli
+      # Start auto-sharing in the background (needs a relay: localcloud.json or LOCALCLOUD_RELAY).
+      - run: localcloud start || true

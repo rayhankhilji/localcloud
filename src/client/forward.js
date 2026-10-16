@@ -21,7 +21,7 @@ export function parseTarget(spec) {
   let protocol = 'http:';
   let host = null;
   let port;
-  if (/^\d+$/.test(s) || /^:\d+$/.test(s)) {
+  if (/^:?[+-]?\d+(\.\d+)?$/.test(s)) {
     port = Number(s.replace(':', ''));
   } else {
     const u = new URL(/^[a-z]+:\/\//i.test(s) ? s : `http://${s}`);
@@ -99,6 +99,9 @@ export function localRequestHeaders(req, t) {
   }
   const host = mode === 'rewrite' ? new URL(local).host : mode === 'preserve' ? publicHost : mode;
   out.unshift(['Host', host]);
+  // Transfer-Encoding is hop-by-hop, so the relay only tells us the body was chunked.
+  // Say so explicitly: Node would otherwise send a GET/DELETE/OPTIONS body unframed.
+  if (req.chunked && !out.some(([k]) => k.toLowerCase() === 'content-length')) out.push(['Transfer-Encoding', 'chunked']);
   if (req.remote) out.push(['X-Forwarded-For', req.remote]);
   out.push(['X-Forwarded-Proto', req.proto || 'https']);
   // In rewrite mode the app believes it is on localhost; announcing a different
@@ -108,17 +111,21 @@ export function localRequestHeaders(req, t) {
   return out;
 }
 
-const LOCAL_ORIGIN_RE = /^(https?:)\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(?::(\d+))?(?=\/|$)/i;
+const LOCAL_ORIGIN_RE = /^(https?:)\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(?::(\d+))?(?=[/?#]|$)/i;
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Rewrite response headers that leak the local origin. */
 export function publicResponseHeaders(rawHeaders, req, t) {
   const target = t.target;
+  const originRe = target.host
+    ? new RegExp(`^(https?:)\\/\\/(${escapeRe(target.host.includes(':') ? `[${target.host}]` : target.host)})(?::(\\d+))?(?=[/?#]|$)`, 'i')
+    : LOCAL_ORIGIN_RE;
   const pairs = filterRawHeaders(rawHeaders);
   const out = [];
   for (const [name, value] of pairs) {
     const lower = name.toLowerCase();
     if (lower === 'location' || lower === 'content-location' || lower === 'access-control-allow-origin') {
-      const m = value.match(LOCAL_ORIGIN_RE);
+      const m = value.match(originRe);
       if (m && Number(m[3] || (m[1] === 'https:' ? 443 : 80)) === target.port) {
         out.push([name, req.origin + value.slice(m[0].length)]);
         continue;
@@ -195,6 +202,7 @@ export function forward(conn, sid, req, tunnel, onLog, onDone) {
     onAbort() {
       aborted = true;
       complete();
+      out.stop();
       sink?.destroy();
     },
   };

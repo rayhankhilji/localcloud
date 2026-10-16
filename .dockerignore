@@ -1,0 +1,6 @@
+# Only package.json, package-lock.json, bin/ and src/ are needed in the image.
+**
+!package.json
+!package-lock.json
+!bin/
+!src/

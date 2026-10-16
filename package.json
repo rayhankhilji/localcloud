@@ -13,7 +13,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test --test-concurrency=1 test/",
+    "test": "node --test --test-concurrency=1 test/*.test.js",
     "relay": "node bin/localcloud.js relay"
   },
   "engines": {

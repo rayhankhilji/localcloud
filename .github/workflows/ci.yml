@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [18, 20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  docker:
+    name: docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: localcloud-relay:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke test /__localcloud/health
+        run: |
+          docker run -d --name relay -p 8080:8080 \
+            -e LOCALCLOUD_DOMAIN=example.com -e LOCALCLOUD_RELAY_TOKEN=ci-token \
+            localcloud-relay:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8080/__localcloud/health && break
+            sleep 1
+          done
+          echo
+          curl -fsS http://localhost:8080/__localcloud/health | grep -q '"ok":true'
+          curl -fsS http://localhost:8080/__localcloud/health | grep -q '"routing":"subdomain"'
+          test "$(docker inspect -f '{{.Config.User}}' relay)" = node
+      - name: Wait for the image HEALTHCHECK to report healthy
+        run: |
+          for i in $(seq 1 90); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' relay)
+            [ "$status" = healthy ] && exit 0
+            sleep 1
+          done
+          echo "::error::container health is '$status'"
+          exit 1
+      - name: Relay logs
+        if: always()
+        run: docker logs relay || true
+
+  e2e:
+    name: end-to-end (${{ matrix.transport }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        transport: [ws, http]
+    env:
+      LOCALCLOUD_RELAY: http://localhost:8099
+      LOCALCLOUD_TRANSPORT: ${{ matrix.transport }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start a relay and a dev server
+        run: |
+          echo "LOCALCLOUD_HOME=$RUNNER_TEMP/localcloud-home" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/site"
+          echo "hello from localcloud e2e $GITHUB_RUN_ID" > "$RUNNER_TEMP/site/index.html"
+          nohup node bin/localcloud.js relay --port 8099 --domain localhost:8099 --http > "$RUNNER_TEMP/relay.log" 2>&1 &
+          nohup python3 -m http.server 8000 --directory "$RUNNER_TEMP/site" > "$RUNNER_TEMP/site.log" 2>&1 &
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8099/__localcloud/health && curl -fsS -o /dev/null http://localhost:8000/ && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: localcloud start 8000
+        run: |
+          out=$(node bin/localcloud.js start 8000)
+          echo "$out"
+          url=$(printf '%s\n' "$out" | grep -Eo 'https?://[a-z0-9-]+\.localhost:8099' | head -n1)
+          test -n "$url" || { echo "::error::no tunnel URL in output"; exit 1; }
+          echo "TUNNEL_URL=$url" >> "$GITHUB_ENV"
+      - name: Fetch the page through the tunnel
+        run: |
+          # curl resolves *.localhost to loopback, so no DNS setup is needed.
+          curl -fsS "$TUNNEL_URL/" | tee /dev/stderr | grep -q "hello from localcloud e2e $GITHUB_RUN_ID"
+          node bin/localcloud.js ls
+          node bin/localcloud.js ls --json | grep -q '"connected":true'
+      - name: Logs
+        if: always()
+        run: |
+          echo "::group::relay.log";  cat "$RUNNER_TEMP/relay.log" || true; echo "::endgroup::"
+          echo "::group::daemon.log"; cat "$LOCALCLOUD_HOME/daemon.log" || true; echo "::endgroup::"
+      - name: Stop
+        if: always()
+        run: node bin/localcloud.js stop || true

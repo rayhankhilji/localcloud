@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.rayhankhilji/localcloud",
+  "title": "localcloud",
+  "description": "Share localhost dev servers at public HTTPS URLs — built for cloud coding agents.",
+  "websiteUrl": "https://github.com/rayhankhilji/localcloud",
+  "repository": {
+    "url": "https://github.com/rayhankhilji/localcloud",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "localcloud-cli",
+      "version": "0.1.0",
+      "runtimeHint": "npx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp",
+          "description": "Run localcloud as an MCP server"
+        }
+      ],
+      "environmentVariables": [
+        {
+          "name": "LOCALCLOUD_RELAY",
+          "description": "URL of the localcloud relay to connect to, e.g. https://relay.example.com (optional if the project commits a localcloud.json)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "LOCALCLOUD_TOKEN",
+          "description": "Access token, if the relay requires one",
+          "isRequired": false,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

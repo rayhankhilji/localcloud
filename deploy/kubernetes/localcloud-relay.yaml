@@ -1,0 +1,156 @@
+# localcloud relay on Kubernetes. Full guide: docs/self-hosting.md#kubernetes
+#
+#   kubectl create namespace localcloud
+#   kubectl -n localcloud create secret generic localcloud-relay --from-literal=LOCALCLOUD_RELAY_TOKEN=$(openssl rand -hex 24)
+#   kubectl -n localcloud apply -f localcloud-relay.yaml
+#
+# Replace tunnel.example.com everywhere below with your domain.
+#
+# IMPORTANT: the relay keeps all tunnels in memory. Run exactly one replica,
+# never attach a HorizontalPodAutoscaler, and use the Recreate strategy so two
+# pods never run side by side during a rollout. Clients reconnect on their own
+# after a restart and re-claim the same URLs.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localcloud-relay
+  labels:
+    app.kubernetes.io/name: localcloud-relay
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: localcloud-relay
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: localcloud-relay
+    spec:
+      terminationGracePeriodSeconds: 15
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: relay
+          image: ghcr.io/rayhankhilji/localcloud:latest   # pin a version tag in production
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: LOCALCLOUD_DOMAIN
+              value: tunnel.example.com
+            - name: LOCALCLOUD_RELAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: localcloud-relay
+                  key: LOCALCLOUD_RELAY_TOKEN
+                  optional: true
+          readinessProbe:
+            httpGet:
+              path: /__localcloud/health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /__localcloud/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: localcloud-relay
+  labels:
+    app.kubernetes.io/name: localcloud-relay
+spec:
+  selector:
+    app.kubernetes.io/name: localcloud-relay
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Ingress for ingress-nginx. Notes for any ingress controller:
+#  * WebSockets must pass through (ingress-nginx does this automatically).
+#  * Read/send timeouts must exceed the relay's 15 s long poll and the 20 s
+#    WebSocket ping; long values also keep dev-server HMR sockets alive.
+#  * Response buffering must be off so long polls and streams flow immediately.
+#  * The wildcard host needs a wildcard certificate, which cert-manager can
+#    only get with a DNS-01 solver (HTTP-01 cannot issue wildcards). The
+#    Certificate below assumes a ClusterIssuer named "letsencrypt-dns".
+#  * Other controllers: Traefik and Contour proxy WebSockets by default; on GKE
+#    raise the BackendConfig timeoutSec (default 30 s) to e.g. 3600.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: localcloud-relay
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - tunnel.example.com
+        - "*.tunnel.example.com"
+      secretName: localcloud-relay-tls
+  rules:
+    - host: tunnel.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: localcloud-relay
+                port:
+                  name: http
+    - host: "*.tunnel.example.com"
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: localcloud-relay
+                port:
+                  name: http
+---
+# Requires cert-manager and a DNS-01 ClusterIssuer. Delete this if you provide
+# the localcloud-relay-tls secret yourself.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: localcloud-relay-tls
+spec:
+  secretName: localcloud-relay-tls
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-dns
+  dnsNames:
+    - tunnel.example.com
+    - "*.tunnel.example.com"

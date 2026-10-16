@@ -12,6 +12,7 @@ export class Outbound {
     this.send = send;
     this.window = window;
     this.inflight = 0;
+    this.sentBytes = 0;
     this.paused = false;
     this.readable = null;
     this.ended = false;
@@ -21,6 +22,7 @@ export class Outbound {
   write(chunk) {
     if (!chunk.length) return;
     this.inflight += chunk.length;
+    this.sentBytes += chunk.length;
     this.send(T.DATA, chunk);
   }
 
@@ -28,6 +30,7 @@ export class Outbound {
   pump(readable, onEnd) {
     this.readable = readable;
     readable.on('data', (chunk) => {
+      if (this.stopped) return;
       this.write(chunk);
       if (this.inflight >= this.window && !this.paused) {
         this.paused = true;
@@ -35,15 +38,23 @@ export class Outbound {
       }
     });
     readable.once('end', () => {
+      if (this.stopped) return;
       this.ended = true;
       this.send(T.END);
       onEnd?.();
     });
   }
 
+  /** The other side is gone: drain the rest of the readable into the void (so its socket can be reused). */
+  stop() {
+    if (this.stopped) return;
+    this.stopped = true;
+    if (this.readable && !this.readable.destroyed) this.readable.resume();
+  }
+
   ack(n) {
     this.inflight = Math.max(0, this.inflight - n);
-    if (this.paused && this.inflight < this.window / 2 && this.readable) {
+    if (this.paused && !this.stopped && this.inflight < this.window / 2 && this.readable) {
       this.paused = false;
       this.readable.resume();
     }

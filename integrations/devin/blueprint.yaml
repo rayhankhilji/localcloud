@@ -1,0 +1,18 @@
+# Devin environment blueprint snippet (Declarative configuration).
+# Merge these steps into your existing blueprint — field names per docs.devin.ai
+# "Blueprint reference" (initialize / maintenance / knowledge).
+initialize:
+  - name: Install localcloud
+    run: npm install -g localcloud-cli
+
+maintenance:
+  - name: Update localcloud
+    run: npm install -g localcloud-cli@latest
+
+knowledge:
+  - name: Sharing dev servers
+    contents: |
+      Whenever you start a dev server the user should see, run `localcloud start <port>`
+      and give the user the printed https URL instead of a localhost link.
+      `localcloud start` with no port auto-shares every dev server.
+      If it fails, run `localcloud doctor` and report the output.

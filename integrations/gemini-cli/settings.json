@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "localcloud": {
+      "command": "npx",
+      "args": ["-y", "localcloud-cli", "mcp"]
+    }
+  },
+  "context": {
+    "fileName": ["AGENTS.md", "GEMINI.md"]
+  }
+}

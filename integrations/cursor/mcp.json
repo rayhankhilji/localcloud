@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "localcloud": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "localcloud-cli", "mcp"]
+    }
+  }
+}

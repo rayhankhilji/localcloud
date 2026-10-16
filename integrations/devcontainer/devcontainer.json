@@ -1,0 +1,10 @@
+{
+  "name": "app",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "postCreateCommand": "npm install && npm install -g localcloud-cli",
+  // Starts the background daemon on every container start; it auto-shares each dev server.
+  "postStartCommand": "localcloud start || true",
+  "containerEnv": {
+    "LOCALCLOUD_RELAY": "https://relay.example.com"
+  }
+}

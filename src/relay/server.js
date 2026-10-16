@@ -39,6 +39,12 @@ const WAIT_FOR_RECONNECT_MS = 8_000;
 const RESERVATION_MS = 60 * 60_000;
 const MAX_TUNNELS_PER_SESSION = 25;
 const MAX_UP_BODY = 64 * 1024 * 1024;
+const HELLO_TIMEOUT_MS = 30_000;
+
+const envInt = (name, fallback) => {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+};
 
 const noop = () => {};
 
@@ -49,7 +55,13 @@ function parseCookies(header) {
     const i = part.indexOf('=');
     if (i < 0) continue;
     const k = part.slice(0, i).trim();
-    if (k) out[k] = decodeURIComponent(part.slice(i + 1).trim());
+    if (!k) continue;
+    const v = part.slice(i + 1).trim();
+    try {
+      out[k] = decodeURIComponent(v);
+    } catch {
+      out[k] = v; // malformed escapes must never take the relay down
+    }
   }
   return out;
 }
@@ -122,6 +134,9 @@ class WsTransport extends EventEmitter {
     } catch {}
     setTimeout(() => this.ws.terminate(), 1000).unref();
   }
+  end() {
+    this.close(); // ws.close() flushes queued messages before the close frame
+  }
 }
 
 /** HTTP long-poll transport (server side). */
@@ -131,23 +146,31 @@ class PollTransport extends EventEmitter {
     this.kind = 'http';
     this.sid = sid;
     this.queue = [];
-    this.queuedBytes = 0;
-    this.pending = null; // {res, timer}
-    this.lastBatch = null; // {seq, body}
+    this.pending = null; // {res, timer}: the held "down" request
+    this.lastBatch = null; // {seq, body}: kept until the client acknowledges it
     this.downSeq = 0;
     this.upSeq = 0;
     this.closed = false;
+    this.ending = false;
+    this.flushScheduled = false;
     this.lastSeen = Date.now();
     this.watchdog = setInterval(() => {
       if (!this.pending && Date.now() - this.lastSeen > SESSION_IDLE_MS) this.close();
     }, 5_000);
+    this.watchdog.unref();
   }
 
   send(buf) {
-    if (this.closed) return;
+    if (this.closed || this.ending) return;
     this.queue.push(buf);
-    this.queuedBytes += buf.length;
-    if (this.pending) setImmediate(() => this.flush());
+    // Coalesce everything sent in this tick into one response.
+    if (this.pending && !this.flushScheduled) {
+      this.flushScheduled = true;
+      setImmediate(() => {
+        this.flushScheduled = false;
+        this.flush();
+      });
+    }
   }
 
   flush() {
@@ -162,16 +185,15 @@ class PollTransport extends EventEmitter {
       bytes += this.queue[take].length;
       take++;
     }
-    const frames = this.queue.splice(0, take);
-    this.queuedBytes -= bytes;
     const seq = ++this.downSeq;
-    const body = encodeBatch(frames);
+    const body = encodeBatch(this.queue.splice(0, take));
     this.lastBatch = { seq, body };
     this.respond(p.res, seq, body);
+    if (this.ending && !this.queue.length) this.close();
   }
 
   respond(res, seq, body) {
-    if (res.writableEnded || res.destroyed) return;
+    if (res.headersSent || res.destroyed) return;
     res.writeHead(200, {
       'content-type': 'application/octet-stream',
       'cache-control': 'no-store',
@@ -183,12 +205,9 @@ class PollTransport extends EventEmitter {
 
   handleDown(req, res, ack) {
     this.lastSeen = Date.now();
-    if (this.closed) {
-      res.writeHead(410).end();
-      return;
-    }
+    if (this.closed) return res.writeHead(410, { 'cache-control': 'no-store' }).end();
     if (this.pending) {
-      // A newer poll supersedes the old one.
+      // A newer poll supersedes the old one (the client gave up on it).
       clearTimeout(this.pending.timer);
       this.respond(this.pending.res, 0, Buffer.alloc(0));
       this.pending = null;
@@ -196,8 +215,7 @@ class PollTransport extends EventEmitter {
     if (this.lastBatch) {
       if (ack < this.lastBatch.seq) {
         // The previous response never made it; send it again.
-        this.respond(res, this.lastBatch.seq, this.lastBatch.body);
-        return;
+        return this.respond(res, this.lastBatch.seq, this.lastBatch.body);
       }
       this.lastBatch = null;
     }
@@ -232,17 +250,34 @@ class PollTransport extends EventEmitter {
     }
     this.upSeq = seq;
     res.writeHead(204).end();
-    for (const f of frames) this.emit('frame', f);
+    for (const f of frames) {
+      if (this.closed) break;
+      this.emit('frame', f);
+    }
+  }
+
+  /** Close once everything already queued has been handed to the client. */
+  end() {
+    if (this.closed || this.ending) return;
+    this.ending = true;
+    if (!this.queue.length) return this.close();
+    this.endTimer = setTimeout(() => this.close(), 5_000);
+    this.endTimer.unref();
+    this.flush();
   }
 
   close() {
     if (this.closed) return;
     this.closed = true;
     clearInterval(this.watchdog);
+    clearTimeout(this.endTimer);
+    this.queue = [];
+    this.lastBatch = null;
     if (this.pending) {
       clearTimeout(this.pending.timer);
-      this.pending.res.writeHead(410).end();
+      const { res } = this.pending;
       this.pending = null;
+      if (!res.headersSent && !res.destroyed) res.writeHead(410, { 'cache-control': 'no-store' }).end();
     }
     this.emit('close');
   }
@@ -258,12 +293,29 @@ class Session {
     this.tunnels = new Map(); // id -> tunnel
     this.streams = new Map(); // sid -> stream
     this.nextSid = 1;
-    this.lastRx = Date.now();
+    this.created = this.lastRx = Date.now();
     transport.on('frame', (buf) => this.onFrame(buf));
     transport.once('close', () => this.onClose());
     this.idle = setInterval(() => {
-      if (Date.now() - this.lastRx > SESSION_IDLE_MS * 1.5) transport.close();
+      const now = Date.now();
+      if (now - this.lastRx > SESSION_IDLE_MS * 1.5 || (!this.ready && now - this.created > HELLO_TIMEOUT_MS)) this.close();
     }, 10_000);
+    this.idle.unref();
+  }
+
+  /** Hang up. Tunnels go offline right away so new requests wait for the reconnect instead of entering a dying connection. */
+  close() {
+    this.markOffline();
+    this.transport.close();
+  }
+
+  markOffline() {
+    for (const t of this.tunnels.values()) {
+      if (t.session === this) {
+        t.session = null;
+        t.offlineSince = Date.now();
+      }
+    }
   }
 
   send(type, sid, payload) {
@@ -276,9 +328,9 @@ class Session {
     try {
       f = decodeFrame(buf);
     } catch {
-      return this.transport.close();
+      return this.close();
     }
-    if (!this.ready && f.type !== T.HELLO) return this.transport.close();
+    if (!this.ready && f.type !== T.HELLO) return this.close();
     try {
       switch (f.type) {
         case T.HELLO:
@@ -313,14 +365,17 @@ class Session {
     if (Number(msg.v) !== PROTOCOL_VERSION) error = `protocol mismatch (client v${msg.v}, relay v${PROTOCOL_VERSION}) — update localcloud`;
     else if (relay.token && !safeEqual(msg.token || '', relay.token)) error = 'this relay requires a valid LOCALCLOUD_TOKEN';
     if (error) {
+      relay.log(`rejected client from ${this.remote}: ${error}`);
       this.send(T.WELCOME, 0, { ok: false, error });
-      setTimeout(() => this.transport.close(), 200);
+      this.transport.end(); // deliver the WELCOME, then hang up
       return;
     }
+    if (this.ready) return;
     this.ready = true;
-    this.client = msg.client || {};
+    this.client = msg.client && typeof msg.client === 'object' ? msg.client : {};
     this.send(T.WELCOME, 0, { ok: true, version: VERSION, routing: relay.routing, transport: this.transport.kind });
-    relay.log(`client connected via ${this.transport.kind} from ${this.remote}`);
+    const c = this.client;
+    relay.log(`client connected via ${this.transport.kind} from ${this.remote} (localcloud ${c.version || '?'}, ${c.agent || 'unknown'} on ${c.platform || '?'})`);
   }
 
   onOpen(msg) {
@@ -343,22 +398,32 @@ class Session {
     }
 
     let tunnel = relay.tunnels.get(id);
-    if (tunnel?.session && tunnel.session !== this) tunnel.session.tunnels.delete(id);
+    if (!tunnel && relay.tunnels.size >= relay.maxTunnels) {
+      relay.log(`refused a tunnel for ${this.remote}: relay is full (${relay.maxTunnels} tunnels)`);
+      return reply({ ok: false, error: 'this relay is at capacity, try again later', code: 'relay_full' });
+    }
+    if (tunnel?.session && tunnel.session !== this) {
+      const old = tunnel.session;
+      old.tunnels.delete(id);
+      // Same client on a new connection: the old one is dead even if TCP hasn't noticed yet.
+      if (old.secret === msg.secret) old.close();
+    }
     if (!tunnel) {
       tunnel = { id, secret: msg.secret, session: null, waiters: [], offlineSince: 0 };
       relay.tunnels.set(id, tunnel);
     }
-    tunnel.port = msg.port;
+    tunnel.port = Number.isInteger(msg.port) ? msg.port : null;
     tunnel.access = msg.protect ? tunnel.access || randomToken(18) : null;
     tunnel.basicAuth = typeof msg.basicAuth === 'string' && msg.basicAuth.includes(':') ? msg.basicAuth : null;
     tunnel.session = this;
     tunnel.offlineSince = 0;
+    this.secret = msg.secret;
     this.tunnels.set(id, tunnel);
     for (const w of tunnel.waiters.splice(0)) w(this);
 
     const url = relay.tunnelUrl(id, this.baseUrl);
     const accessUrl = tunnel.access ? relay.accessUrl(id, tunnel.access, this.baseUrl) : undefined;
-    relay.log(`tunnel ${id} online${tunnel.access ? ' (protected)' : ''}`);
+    relay.log(`tunnel ${id} online (port ${tunnel.port ?? '?'}, ${this.transport.kind}, ${this.remote})${tunnel.access ? ' protected' : ''}${tunnel.basicAuth ? ' basic-auth' : ''}`);
     reply({ ok: true, id, url, accessUrl });
   }
 
@@ -377,14 +442,9 @@ class Session {
 
   onClose() {
     clearInterval(this.idle);
-    this.relay.sessions.delete(this);
-    for (const s of [...this.streams.values()]) s.onAbort({ code: 'ECONNRESET', message: 'tunnel disconnected' });
-    for (const t of this.tunnels.values()) {
-      if (t.session === this) {
-        t.session = null;
-        t.offlineSince = Date.now();
-      }
-    }
+    this.relay.detach(this);
+    for (const s of [...this.streams.values()]) s.onAbort({ code: 'ECONNRESET', message: 'tunnel disconnected', sessionLost: true });
+    this.markOffline();
     if (this.ready) this.relay.log(`client disconnected (${this.tunnels.size} tunnel(s) waiting for reconnect)`);
   }
 
@@ -410,15 +470,21 @@ class Session {
       proto: relay.publicProto(req),
       origin: relay.publicOrigin(tunnel.id, req),
       upgrade: !!upgrade,
+      chunked: !upgrade && /chunked/i.test(String(req.headers['transfer-encoding'] || '')),
     };
   }
 
   /** Forward a normal HTTP request through the tunnel. */
-  forwardHttp(tunnel, req, res) {
+  /**
+   * Forward a normal HTTP request through the tunnel.
+   * @param {{retry?: boolean}} [opts] retry: this request already went to a connection that died
+   */
+  forwardHttp(tunnel, req, res, opts = {}) {
     const sid = this.nextSid++;
     const send = (type, payload) => this.send(type, sid, payload);
     const started = Date.now();
     let done = false;
+    let retried = false;
     const stream = {
       out: new Outbound(send),
       in: null,
@@ -439,26 +505,34 @@ class Session {
         finish();
         res.end();
       },
-      onAbort: ({ code, message } = {}) => {
+      onAbort: ({ code, message, sessionLost } = {}) => {
         if (done) return;
         finish();
-        if (!res.headersSent) this.relay.sendUpstreamError(req, res, tunnel, code, message);
-        else res.destroy();
+        if (res.headersSent) return res.destroy();
+        // The client's connection died before it answered. A bodiless request can safely
+        // go to the reconnected client instead of failing (sandboxes reconnect often).
+        if (sessionLost && !opts.retry && req.complete && !stream.out.inflight && !stream.out.sentBytes) {
+          retried = true;
+          return this.relay.forwardWhenOnline(tunnel, req, res, { retry: true });
+        }
+        this.relay.sendUpstreamError(req, res, tunnel, code, message);
       },
     };
     const finish = () => {
       done = true;
       this.streams.delete(sid);
+      stream.out.stop(); // if the response finished first, drain the rest of the request body
     };
     this.streams.set(sid, stream);
     send(T.REQ, this.requestInfo(tunnel, req, false));
-    stream.out.pump(req);
+    if (opts.retry) send(T.END); // the body (empty) was consumed by the first attempt
+    else stream.out.pump(req);
     res.on('close', () => {
       if (!done) {
         finish();
         send(T.ABORT, { code: 'ECONNRESET', message: 'browser went away' });
       }
-      this.relay.emit('request', { tunnel: tunnel.id, method: req.method, url: req.url, status: res.statusCode, ms: Date.now() - started });
+      if (!retried) this.relay.emit('request', { tunnel: tunnel.id, method: req.method, url: req.url, status: res.statusCode, ms: Date.now() - started });
     });
   }
 
@@ -471,6 +545,7 @@ class Session {
     const finish = () => {
       done = true;
       this.streams.delete(sid);
+      stream.out.stop();
     };
     const stream = {
       out: new Outbound(send),
@@ -492,12 +567,14 @@ class Session {
       },
     };
     this.streams.set(sid, stream);
+    this.relay.upgraded.add(socket);
     socket.setNoDelay(true);
     socket.on('error', noop);
     send(T.REQ, this.requestInfo(tunnel, req, true));
     if (head?.length) stream.out.write(head);
     stream.out.pump(socket);
     socket.on('close', () => {
+      this.relay.upgraded.delete(socket);
       if (!done) {
         finish();
         send(T.ABORT, { code: 'ECONNRESET', message: 'browser went away' });
@@ -515,6 +592,10 @@ export class Relay extends EventEmitter {
    * @param {string} [opts.token]    require clients to present this token
    * @param {boolean} [opts.insecure] tunnel URLs use http:// (local development)
    * @param {boolean} [opts.trustProxy] trust X-Forwarded-For / -Proto from a fronting proxy
+   * @param {number} [opts.maxSessionsPerIp] concurrent client connections per IP (env LOCALCLOUD_MAX_SESSIONS_PER_IP)
+   * @param {number} [opts.maxTunnels]       tunnels on the whole relay, reserved ones included (env LOCALCLOUD_MAX_TUNNELS)
+   * @param {number} [opts.maxHeaderSize]    request header bytes (env LOCALCLOUD_MAX_HEADER_SIZE)
+   * @param {number} [opts.reconnectGraceMs] how long a request waits for an offline tunnel to come back
    * @param {(msg: string) => void} [opts.log]
    */
   constructor(opts = {}) {
@@ -527,9 +608,16 @@ export class Relay extends EventEmitter {
     this.insecure = !!opts.insecure;
     this.trustProxy = opts.trustProxy ?? true;
     this.log = opts.log || noop;
+    // Generous defaults: many agent sandboxes share a handful of egress IPs.
+    this.maxSessionsPerIp = opts.maxSessionsPerIp ?? envInt('LOCALCLOUD_MAX_SESSIONS_PER_IP', 200);
+    this.maxTunnels = opts.maxTunnels ?? envInt('LOCALCLOUD_MAX_TUNNELS', 10_000);
+    this.maxHeaderSize = opts.maxHeaderSize ?? envInt('LOCALCLOUD_MAX_HEADER_SIZE', 32 * 1024);
+    this.reconnectGraceMs = opts.reconnectGraceMs ?? WAIT_FOR_RECONNECT_MS;
     this.sessions = new Set();
+    this.sessionsByIp = new Map(); // ip -> count
     this.tunnels = new Map();
     this.polls = new Map();
+    this.upgraded = new Set(); // browser sockets piped through tunnels
     this.wss = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: 64 * 1024 * 1024 });
     this.gc = setInterval(() => this.collect(), 60_000);
     this.gc.unref();
@@ -591,6 +679,14 @@ export class Relay extends EventEmitter {
   // ---------- HTTP handling ----------
 
   handleRequest(req, res) {
+    this.dispatch(req, res).catch((err) => {
+      this.log(`error handling ${req.method} ${req.url}: ${err.stack || err.message}`);
+      if (!res.headersSent && !res.destroyed) res.writeHead(500, { 'content-type': 'text/plain' });
+      if (!res.writableEnded) res.end('localcloud relay error\n');
+    });
+  }
+
+  async dispatch(req, res) {
     const route = this.route(req);
     if (route) return this.handleTunnelRequest(route, req, res);
     if (req.url.startsWith(API)) return this.handleApi(req, res);
@@ -616,6 +712,8 @@ export class Relay extends EventEmitter {
         return res.end(JSON.stringify({ ok: true, service: 'localcloud', version: VERSION, protocol: PROTOCOL_VERSION, routing: this.routing, tunnels: this.tunnels.size }));
       }
       if (path === '/http/session' && req.method === 'POST') {
+        req.resume();
+        if (!this.admit(req)) return res.writeHead(429, { 'content-type': 'text/plain', 'retry-after': '10' }).end('too many connections from your address\n');
         const sid = randomToken(24);
         const transport = new PollTransport(sid);
         this.polls.set(sid, transport);
@@ -624,7 +722,7 @@ export class Relay extends EventEmitter {
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
         return res.end(JSON.stringify({ sid, hold: POLL_HOLD_MS }));
       }
-      if ((path === '/http/up' || path === '/http/down') && req.method === 'POST') {
+      if ((path === '/http/up' || path === '/http/down' || path === '/http/close') && req.method === 'POST') {
         const transport = this.polls.get(url.searchParams.get('sid') || '');
         if (!transport) {
           req.resume();
@@ -634,12 +732,22 @@ export class Relay extends EventEmitter {
           req.resume();
           return transport.handleDown(req, res, Number(url.searchParams.get('ack') || 0));
         }
+        if (path === '/http/close') {
+          req.resume();
+          transport.close();
+          return res.writeHead(204).end();
+        }
         const body = await readBody(req, MAX_UP_BODY);
         return transport.handleUp(res, Number(url.searchParams.get('seq') || 0), body);
       }
       if (path.startsWith('/t/')) {
         // Cookie routing entry point: /__localcloud/t/<id>?__lc_access=…
-        const id = decodeURIComponent(path.slice(3)).split('/')[0];
+        let id;
+        try {
+          id = decodeURIComponent(path.slice(3)).split('/')[0];
+        } catch {
+          return this.sendPage(res, 400, notFoundPage(path.slice(3)));
+        }
         const tunnel = this.tunnels.get(id);
         if (!tunnel) return this.sendPage(res, 404, notFoundPage(id));
         const cookies = [`${ROUTE_COOKIE}=${encodeURIComponent(id)}; Path=/; HttpOnly; SameSite=Lax${this.cookieSecure(req)}`];
@@ -759,42 +867,73 @@ export class Relay extends EventEmitter {
       req.resume();
       return res.writeHead(503).end();
     }
-    const session = await this.waitOnline(tunnel, req.headers['x-localcloud-probe'] ? 0 : WAIT_FOR_RECONNECT_MS);
+    return this.forwardWhenOnline(tunnel, req, res, {}, req.headers['x-localcloud-probe'] ? 0 : this.reconnectGraceMs);
+  }
+
+  async forwardWhenOnline(tunnel, req, res, opts, wait = this.reconnectGraceMs) {
+    const session = await this.waitOnline(tunnel, wait);
+    if (res.destroyed) return; // the browser gave up while we waited
     if (!session) {
       req.resume();
       return this.sendPage(res, 503, offlinePage(tunnel.id), req);
     }
-    session.forwardHttp(tunnel, req, res);
+    session.forwardHttp(tunnel, req, res, opts);
   }
 
-  async handleUpgrade(req, socket, head) {
+  handleUpgrade(req, socket, head) {
     socket.on('error', noop);
+    this.dispatchUpgrade(req, socket, head).catch((err) => {
+      this.log(`error handling upgrade ${req.url}: ${err.stack || err.message}`);
+      socket.destroy();
+    });
+  }
+
+  async dispatchUpgrade(req, socket, head) {
     const route = this.route(req);
     if (!route) {
-      if (req.url.startsWith(`${API}ws`)) {
+      if (req.url.split('?')[0] === `${API}ws`) {
+        if (!this.admit(req)) {
+          socket.end('HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+          return;
+        }
         this.wss.handleUpgrade(req, socket, head, (ws) => this.attach(new WsTransport(ws), req));
         return;
       }
       return socket.destroy();
     }
     const tunnel = this.tunnels.get(route.id);
-    if (!tunnel || !this.authorize(tunnel, req, null)) {
-      socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
-      return;
-    }
-    const session = await this.waitOnline(tunnel, WAIT_FOR_RECONNECT_MS);
-    if (!session || socket.destroyed) {
+    if (!tunnel) return socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+    if (!this.authorize(tunnel, req, null)) return socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+    const session = await this.waitOnline(tunnel, this.reconnectGraceMs);
+    if (socket.destroyed) return;
+    if (!session) {
       socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
       return;
     }
     session.forwardUpgrade(tunnel, req, socket, head);
   }
 
+  /** Per-IP connection cap, checked before a client transport is created. */
+  admit(req) {
+    const ip = this.clientIp(req);
+    if ((this.sessionsByIp.get(ip) || 0) < this.maxSessionsPerIp) return true;
+    this.log(`refused a client connection from ${ip}: ${this.maxSessionsPerIp} already open`);
+    return false;
+  }
+
   attach(transport, req) {
     const session = new Session(this, transport, this.clientIp(req));
     session.baseUrl = this.baseUrlFor(req);
     this.sessions.add(session);
+    this.sessionsByIp.set(session.remote, (this.sessionsByIp.get(session.remote) || 0) + 1);
     return session;
+  }
+
+  detach(session) {
+    if (!this.sessions.delete(session)) return;
+    const n = (this.sessionsByIp.get(session.remote) || 1) - 1;
+    if (n > 0) this.sessionsByIp.set(session.remote, n);
+    else this.sessionsByIp.delete(session.remote);
   }
 
   collect() {
@@ -812,15 +951,18 @@ export class Relay extends EventEmitter {
   /** @param {{port?: number, host?: string, tlsCert?: string, tlsKey?: string}} [opts] */
   listen({ port = 8080, host = '0.0.0.0', tlsCert, tlsKey } = {}) {
     const handler = (req, res) => this.handleRequest(req, res);
+    const serverOpts = { maxHeaderSize: this.maxHeaderSize };
     this.server = tlsCert
-      ? https.createServer({ cert: fs.readFileSync(tlsCert), key: fs.readFileSync(tlsKey) }, handler)
-      : http.createServer(handler);
+      ? https.createServer({ ...serverOpts, cert: fs.readFileSync(tlsCert), key: fs.readFileSync(tlsKey) }, handler)
+      : http.createServer(serverOpts, handler);
     this.server.keepAliveTimeout = 65_000;
     this.server.headersTimeout = 66_000;
     this.server.requestTimeout = 0; // long polls and streaming responses
     this.server.on('upgrade', (req, socket, head) => this.handleUpgrade(req, socket, head));
     this.server.on('clientError', (err, socket) => {
-      if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+      if (!socket.writable) return socket.destroy();
+      const status = err.code === 'HPE_HEADER_OVERFLOW' ? '431 Request Header Fields Too Large' : '400 Bad Request';
+      socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
     });
     return new Promise((resolve, reject) => {
       this.server.once('error', reject);
@@ -833,9 +975,10 @@ export class Relay extends EventEmitter {
 
   async close() {
     clearInterval(this.gc);
-    for (const s of this.sessions) s.transport.close();
-    for (const p of this.polls.values()) p.close();
     for (const c of this.wss.clients) c.terminate();
+    for (const s of [...this.sessions]) s.close();
+    for (const p of [...this.polls.values()]) p.close();
+    for (const s of this.upgraded) s.destroy();
     if (this.server) {
       this.server.closeAllConnections?.();
       await new Promise((r) => this.server.close(() => r()));

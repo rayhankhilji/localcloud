@@ -1,0 +1,13 @@
+{
+  "name": "localcloud-example-nextjs",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "share": "npx -y localcloud-cli run -- next dev"
+  },
+  "dependencies": {
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

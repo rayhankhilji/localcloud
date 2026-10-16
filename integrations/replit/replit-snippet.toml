@@ -1,0 +1,4 @@
+# Add to your .replit — shares the dev server at a stable localcloud URL when you press Run.
+# (Replit already gives the webview a *.replit.dev URL; localcloud is useful when you want
+#  one URL that works the same from every agent/sandbox, or a protected link.)
+run = "npx -y localcloud-cli run -- npm run dev"

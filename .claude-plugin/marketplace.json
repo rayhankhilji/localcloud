@@ -1,0 +1,17 @@
+{
+  "name": "localcloud",
+  "description": "localcloud for Claude Code: share localhost dev servers at public HTTPS URLs from cloud sessions",
+  "owner": {
+    "name": "localcloud",
+    "url": "https://github.com/rayhankhilji/localcloud"
+  },
+  "plugins": [
+    {
+      "name": "localcloud",
+      "source": "./integrations/claude-code",
+      "description": "Share localhost dev servers at public HTTPS URLs. Adds the localcloud MCP server (share_port, get_url, list_shared, stop_sharing, auto_share), a skill that teaches Claude when to share, and a SessionStart hook that auto-shares dev servers in cloud sessions.",
+      "category": "development",
+      "keywords": ["localhost", "tunnel", "preview", "dev-server", "mcp"]
+    }
+  ]
+}

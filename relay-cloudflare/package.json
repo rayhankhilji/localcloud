@@ -1,0 +1,16 @@
+{
+  "name": "localcloud-relay-cloudflare",
+  "version": "0.1.0",
+  "private": true,
+  "description": "localcloud relay for Cloudflare Workers + Durable Objects",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "test:e2e": "node test/e2e.mjs"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^4.146.0"
+  }
+}

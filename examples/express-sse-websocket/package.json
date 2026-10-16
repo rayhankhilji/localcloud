@@ -1,0 +1,9 @@
+{
+  "name": "localcloud-example-sse-websocket",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "share": "npx -y localcloud-cli run -- node server.js"
+  }
+}

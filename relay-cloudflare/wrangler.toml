@@ -1,0 +1,64 @@
+# localcloud relay on Cloudflare Workers + Durable Objects.
+# Replace every "example.com" below with your own domain (see README.md).
+name = "localcloud-relay"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+# Buffer + node:crypto: the wire protocol code is shared with the Node relay.
+compatibility_flags = ["nodejs_compat", "enable_request_signal"]
+
+# The apex serves the relay API / landing page, the wildcard serves tunnels
+# (<id>.example.com). Both hostnames need *proxied* DNS records in the zone.
+routes = [
+  { pattern = "example.com/*", zone_name = "example.com" },
+  { pattern = "*.example.com/*", zone_name = "example.com" },
+]
+# Set to true (and DOMAIN = "") to run on <name>.<account>.workers.dev with
+# cookie routing instead of a custom domain.
+workers_dev = false
+
+[vars]
+# Wildcard domain for tunnel URLs: <id>.DOMAIN. Empty = cookie routing.
+DOMAIN = "example.com"
+# "auto" (subdomain when DOMAIN is set, else cookie), "subdomain" or "cookie".
+ROUTING = "auto"
+# "true" only for local development: tunnel URLs use http:// instead of https://.
+INSECURE = "false"
+# Optional public base URL of the relay (only used for cookie routing).
+# PUBLIC_URL = "https://example.com"
+# RELAY_TOKEN is a secret, not a var:  npx wrangler secret put RELAY_TOKEN
+
+[[durable_objects.bindings]]
+name = "SESSION"
+class_name = "Session"
+
+[[durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "Registry"
+
+# SQLite-backed Durable Objects (the only kind available on the Workers Free plan).
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Session", "Registry"]
+
+[observability]
+enabled = true
+
+# Local development / tests: `npx wrangler dev --env dev` (no account needed).
+# No routes here on purpose: with routes, `wrangler dev` rewrites the Host
+# header to the route's zone and subdomain routing can't be tested.
+[env.dev]
+routes = []
+workers_dev = true
+
+[env.dev.vars]
+DOMAIN = "localhost:8787"
+ROUTING = "auto"
+INSECURE = "true"
+
+[[env.dev.durable_objects.bindings]]
+name = "SESSION"
+class_name = "Session"
+
+[[env.dev.durable_objects.bindings]]
+name = "REGISTRY"
+class_name = "Registry"

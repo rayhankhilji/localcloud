@@ -1,0 +1,37 @@
+# Same stack as ../docker-compose/, but with a single wildcard certificate via
+# Cloudflare DNS. Put LOCALCLOUD_DOMAIN, ACME_EMAIL, CLOUDFLARE_API_TOKEN (and
+# optionally LOCALCLOUD_RELAY_TOKEN) in a .env file next to this file, then:
+#   docker compose up -d --build
+
+services:
+  relay:
+    image: ghcr.io/rayhankhilji/localcloud:latest
+    restart: unless-stopped
+    environment:
+      LOCALCLOUD_DOMAIN: ${LOCALCLOUD_DOMAIN:?set LOCALCLOUD_DOMAIN in .env}
+      LOCALCLOUD_RELAY_TOKEN: ${LOCALCLOUD_RELAY_TOKEN:-}
+    expose:
+      - "8080"
+
+  caddy:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - relay
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      LOCALCLOUD_DOMAIN: ${LOCALCLOUD_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:?set CLOUDFLARE_API_TOKEN in .env}
+      RELAY_UPSTREAM: relay:8080
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

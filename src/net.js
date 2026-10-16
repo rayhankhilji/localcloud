@@ -57,17 +57,18 @@ export function matchesNoProxy(host, port, noProxy) {
     if (!entry) continue;
     if (entry === '*') return true;
     let entryPort = null;
-    const m = entry.match(/^(.*):(\d+)$/);
-    if (m && !entry.includes('::')) {
+    // "[v6]:port", "[v6]", "host:port"; a bare IPv6 address has no port.
+    const m = entry.match(/^\[([^\]]+)\](?::(\d+))?$/) || (entry.split(':').length === 2 ? entry.match(/^(.*):(\d+)$/) : null);
+    if (m) {
       entry = m[1];
-      entryPort = Number(m[2]);
+      if (m[2]) entryPort = Number(m[2]);
     }
     if (entryPort && entryPort !== port) continue;
-    entry = entry.replace(/^\[|\]$/g, '');
-    if (entry.includes('/') && net.isIPv4(host)) {
-      const [base, bits] = entry.split('/');
-      if (net.isIPv4(base)) {
-        const mask = Number(bits) === 0 ? 0 : (~0 << (32 - Number(bits))) >>> 0;
+    if (entry.includes('/')) {
+      const [base, bitsText] = entry.split('/');
+      const bits = Number(bitsText);
+      if (net.isIPv4(host) && net.isIPv4(base) && Number.isInteger(bits) && bits >= 0 && bits <= 32) {
+        const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
         if ((ipv4ToInt(host) & mask) === (ipv4ToInt(base) & mask)) return true;
       }
       continue;

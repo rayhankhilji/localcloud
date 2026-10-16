@@ -1,0 +1,28 @@
+# Caddy in front of a localcloud relay, with ONE wildcard certificate obtained
+# through the DNS challenge (Cloudflare DNS shown). No per-tunnel certificates,
+# no Let's Encrypt rate-limit concerns, and tunnels are reachable instantly.
+#
+# Needs a Caddy build that includes the DNS plugin. Build it with the Dockerfile
+# next to this file, or on bare metal:  xcaddy build --with github.com/caddy-dns/cloudflare
+# Other DNS providers: https://github.com/caddy-dns
+#
+# Environment:
+#   LOCALCLOUD_DOMAIN      e.g. tunnel.example.com  → relay at tunnel.example.com, tunnels at *.tunnel.example.com
+#   ACME_EMAIL             Let's Encrypt account email
+#   CLOUDFLARE_API_TOKEN   token with Zone:DNS:Edit (and Zone:Zone:Read) on that zone
+#   RELAY_UPSTREAM         where the relay listens, e.g. 127.0.0.1:8080 or relay:8080
+{
+	email {$ACME_EMAIL}
+}
+
+{$LOCALCLOUD_DOMAIN}, *.{$LOCALCLOUD_DOMAIN} {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+		# Check the TXT record against a public resolver, not a local cache.
+		resolvers 1.1.1.1
+	}
+	reverse_proxy {$RELAY_UPSTREAM} {
+		flush_interval -1
+		stream_close_delay 5m
+	}
+}

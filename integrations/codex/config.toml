@@ -1,0 +1,7 @@
+# ~/.codex/config.toml (or .codex/config.toml in a trusted project)
+# Gives Codex CLI / IDE the localcloud MCP tools: share_port, get_url, list_shared, stop_sharing, auto_share.
+[mcp_servers.localcloud]
+command = "npx"
+args = ["-y", "localcloud-cli", "mcp"]
+# Uncomment to pin a relay instead of committing localcloud.json:
+# env = { LOCALCLOUD_RELAY = "https://relay.example.com" }

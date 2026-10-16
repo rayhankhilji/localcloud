@@ -9,9 +9,9 @@ import { VERSION } from '../version.js';
 import { forward, parseTarget } from './forward.js';
 import { HttpClientTransport, WsClientTransport } from './transports.js';
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
 export class FatalError extends Error {}
+
+const TRANSIENT = new Set(['disconnected', 'not connected']);
 
 export class Client extends EventEmitter {
   /**
@@ -42,7 +42,23 @@ export class Client extends EventEmitter {
     this.closed = false;
     this.stickyHttp = this.transportMode === 'http';
     this.lastError = null;
+    this.fatalError = null;
+    this.timers = new Set(); // pending backoff sleeps, cut short by close()
     this.on('error', () => {}); // errors are reported via 'status'
+  }
+
+  /** setTimeout as a promise that close() resolves early. */
+  sleep(ms) {
+    return new Promise((resolve) => {
+      const entry = {
+        resolve,
+        timer: setTimeout(() => {
+          this.timers.delete(entry);
+          resolve();
+        }, ms),
+      };
+      this.timers.add(entry);
+    });
   }
 
   get status() {
@@ -84,21 +100,28 @@ export class Client extends EventEmitter {
         this.lastError = err.message;
         this.emit('status', { state: 'error', error: err });
         if (err instanceof FatalError) {
+          this.fatalError = err;
           this._rejectFirst?.(err);
           this.closed = true;
           this.emit('fatal', err);
           return;
         }
+        if (this.closed) return;
         attempt++;
-        await sleep(Math.min(10_000, 400 * 2 ** Math.min(attempt, 5)) + Math.random() * 300);
+        await this.sleep(Math.min(10_000, 400 * 2 ** Math.min(attempt, 5)) + Math.random() * 300);
         continue;
+      }
+      if (this.closed) {
+        // close() was called while we were connecting.
+        transport.close();
+        return;
       }
       attempt = 0;
       this.lastError = null;
       await this.session(transport);
       if (this.closed) return;
       this.emit('status', { state: 'reconnecting' });
-      await sleep(300 + Math.random() * 300);
+      await this.sleep(300 + Math.random() * 300);
     }
   }
 
@@ -253,6 +276,8 @@ export class Client extends EventEmitter {
 
   waitConnected() {
     if (this.connected) return Promise.resolve();
+    if (this.fatalError) return Promise.reject(this.fatalError);
+    if (this.closed) return Promise.reject(new Error('client closed'));
     return new Promise((resolve, reject) => {
       const onStatus = (s) => {
         if (s.state !== 'connected') return;
@@ -263,12 +288,15 @@ export class Client extends EventEmitter {
         cleanup();
         reject(err);
       };
+      const onClosed = () => onFatal(new Error('client closed'));
       const cleanup = () => {
         this.off('status', onStatus);
         this.off('fatal', onFatal);
+        this.off('closed', onClosed);
       };
       this.on('status', onStatus);
       this.on('fatal', onFatal);
+      this.on('closed', onClosed);
     });
   }
 
@@ -330,10 +358,17 @@ export class Client extends EventEmitter {
     this.tunnels.set(t.key, t);
     this.start();
     try {
-      await this.waitConnected();
-      return await this.openTunnel(t);
+      for (;;) {
+        await this.waitConnected();
+        try {
+          return await this.openTunnel(t);
+        } catch (err) {
+          // The connection dropped mid-OPEN: the reconnect re-opens every tunnel, so wait for that.
+          if (!TRANSIENT.has(err.message) || this.closed || this.tunnels.get(t.key) !== t) throw err;
+        }
+      }
     } catch (err) {
-      if (!existing) this.tunnels.delete(t.key);
+      if (!existing && this.tunnels.get(t.key) === t) this.tunnels.delete(t.key);
       throw err;
     }
   }
@@ -357,11 +392,21 @@ export class Client extends EventEmitter {
   }
 
   async close() {
+    if (this.closed && !this.transport) return;
     this.closed = true;
-    for (const t of this.tunnels.values()) if (t.id) this.send(T.CLOSE_TUNNEL, 0, { id: t.id });
-    await sleep(this.transport?.kind === 'http' ? 150 : 20);
-    this.transport?.close();
+    for (const { timer, resolve } of this.timers) {
+      clearTimeout(timer);
+      resolve();
+    }
+    this.timers.clear();
+    const transport = this.transport;
+    if (transport) {
+      for (const t of this.tunnels.values()) if (t.id) this.send(T.CLOSE_TUNNEL, 0, { id: t.id });
+      await transport.drain?.(1000);
+      transport.close();
+    }
     this._rejectFirst?.(new Error('closed'));
+    this.emit('closed');
   }
 }
 
