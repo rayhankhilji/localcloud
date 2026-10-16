@@ -5,7 +5,7 @@ localcloud <command> [options]
 npx localcloud-cli <command> [options]     # no install needed
 ```
 
-The npm package is `localcloud-cli` and the binary is `localcloud`. It needs Node.js 18.18 or newer.
+The npm package is `localcloud-cli` and the binary is `localcloud`. It needs Node.js 20 or newer.
 In agent instructions use `npx -y localcloud-cli …`, because `-y` skips npx's install prompt.
 
 - [Commands](#commands): [share](#localcloud-porturl-share) · [start](#localcloud-start) ·
@@ -295,6 +295,7 @@ localcloud relay --http --domain localtest.me:8080      # local development, htt
 | | `LOCALCLOUD_MAX_SESSIONS_PER_IP` | `200` | Concurrent client connections per IP. |
 | | `LOCALCLOUD_MAX_TUNNELS` | `10000` | Tunnels on the whole relay, reserved ones included. |
 | | `LOCALCLOUD_MAX_HEADER_SIZE` | `32768` | Max request header bytes. |
+| `--trust-proxy`, `--no-trust-proxy` | `LOCALCLOUD_TRUST_PROXY` | `true` | Trust `X-Forwarded-For` / `-Proto` from a fronting proxy. Set to `false` when the relay is exposed directly. |
 
 On `relay`, `--token` sets the **relay's** required token. That is a different meaning from
 `--token` on the client commands. Startup output:

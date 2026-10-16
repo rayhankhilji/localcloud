@@ -39,7 +39,7 @@ Every config below is copy-paste ready and lives in [`deploy/`](../deploy/):
 
 ## Requirements
 
-- **Node.js 18.18+**, or Docker. The image is `ghcr.io/rayhankhilji/localcloud` (amd64 + arm64).
+- **Node.js 20+**, or Docker. The image is `ghcr.io/rayhankhilji/localcloud` (amd64 + arm64).
 - **Public HTTPS.** Let the platform or a reverse proxy (Caddy, nginx, an ingress) terminate TLS
   and forward plain HTTP to the relay on port 8080. The relay can also terminate TLS itself
   (`LOCALCLOUD_TLS_CERT`/`LOCALCLOUD_TLS_KEY`).
@@ -336,7 +336,7 @@ relay as a hardened service (`DynamicUser`, read-only system, no privileges) on 
 behind Caddy or nginx on the same host.
 
 ```sh
-sudo npm install -g localcloud-cli                 # needs Node.js 18.18+
+sudo npm install -g localcloud-cli                 # needs Node.js 20+
 sudo cp deploy/systemd/localcloud-relay.service /etc/systemd/system/
 sudo mkdir -p /etc/localcloud
 sudo cp deploy/systemd/relay.env.example /etc/localcloud/relay.env

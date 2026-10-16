@@ -4,7 +4,7 @@
 //   node test/e2e.mjs                  # starts `wrangler dev --local` itself
 //   RELAY_PORT=8799 node test/e2e.mjs  # pick the port
 //   RELAY_URL=http://127.0.0.1:8799 node test/e2e.mjs   # use a running relay
-//                                      # (started with DOMAIN=localhost:<port>, INSECURE=true)
+//                                      # (started with --env dev, DOMAIN=localhost:<port>, STREAM_STALL_MS=3000)
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -33,7 +33,7 @@ async function startRelay() {
   if (process.env.RELAY_URL) return;
   wrangler = spawn(
     process.execPath,
-    ['node_modules/wrangler/bin/wrangler.js', 'dev', '--env', 'dev', '--local', '--ip', '127.0.0.1', '--port', String(PORT), '--var', `DOMAIN:${DOMAIN}`, '--show-interactive-dev-session=false'],
+    ['node_modules/wrangler/bin/wrangler.js', 'dev', '--env', 'dev', '--local', '--ip', '127.0.0.1', '--port', String(PORT), '--var', `DOMAIN:${DOMAIN}`, '--var', 'STREAM_STALL_MS:3000', '--show-interactive-dev-session=false'],
     { cwd: here, env: { ...process.env, NO_PROXY: '*', no_proxy: '*' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true },
   );
   const log = (d) => process.env.VERBOSE && process.stderr.write(`[wrangler] ${d}`);

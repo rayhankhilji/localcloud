@@ -31,6 +31,8 @@ export function config(env) {
     insecure: /^(1|true|yes|on)$/i.test(String(env.INSECURE || '')),
     token: env.RELAY_TOKEN || null,
     publicUrl: env.PUBLIC_URL ? String(env.PUBLIC_URL).replace(/\/$/, '') : null,
+    // A streaming response nobody reads for this long is aborted (see BodyPipe).
+    stallMs: /^\d+$/.test(String(env.STREAM_STALL_MS ?? '')) ? Number(env.STREAM_STALL_MS) : 60_000,
   };
 }
 

@@ -100,6 +100,11 @@ To skip the WebSocket attempt entirely, set `--transport http` or `"transport": 
 If `--transport ws` hangs with `relay did not answer the handshake`, the proxy "accepted" the
 upgrade but isn't passing frames. `auto` mode detects this and switches to long-polling.
 
+**Method-restricted egress (e.g. Codex "GET/HEAD/OPTIONS only").** The long-poll fallback sends
+`POST` requests, so it can't work when the sandbox only allows read-only HTTP methods. WebSocket
+upgrades are `GET` requests and may still pass. Allow all HTTP methods for the relay domain if your
+platform offers that setting.
+
 ## Relay token errors
 
 ```text

@@ -189,7 +189,14 @@ npx localcloud-cli init --mcp     # writes .mcp.json
 { "mcpServers": { "localcloud": { "command": "npx", "args": ["-y", "localcloud-cli", "mcp"] } } }
 ```
 
-Tools: `share_port`, `get_url`, `list_shared`, `stop_sharing`, `auto_share`. Resource:
+Claude Code users can install it as a plugin (MCP server + skill + auto-share hook) instead:
+
+```text
+/plugin marketplace add rayhankhilji/localcloud
+/plugin install localcloud@localcloud
+```
+
+Tools: `share_port`, `get_url`, `list_shared`, `stop_sharing`, `auto_share`, `status`. Resource:
 `localcloud://status`. Set the relay with `localcloud.json` or an `env` entry
 (`"env": {"LOCALCLOUD_RELAY": "https://…"}`).
 </details>

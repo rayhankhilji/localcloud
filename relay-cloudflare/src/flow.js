@@ -103,8 +103,16 @@ export function acker(send) {
  * tells us the browser went away.
  */
 export class BodyPipe {
-  /** @param {(n: number) => void} onConsumed @param {(reason: unknown) => void} onCancel */
-  constructor(onConsumed, onCancel) {
+  /**
+   * @param {(n: number) => void} onConsumed
+   * @param {(reason: unknown) => void} onCancel
+   * @param {number} [stallMs] give up when bytes sit unread this long (0 = never)
+   */
+  constructor(onConsumed, onCancel, stallMs = 0) {
+    this.onCancel = onCancel;
+    this.stallMs = stallMs;
+    this.lastPull = Date.now();
+    this.stallTimer = null;
     this.queue = [];
     this.ended = false;
     this.error = null;
@@ -113,6 +121,7 @@ export class BodyPipe {
     this.stream = new ReadableStream(
       {
         pull: async (controller) => {
+          this.lastPull = Date.now();
           while (!this.queue.length && !this.ended && !this.error) await new Promise((r) => (this.wake = r));
           if (this.queue.length) {
             const chunk = this.queue.shift();
@@ -123,15 +132,29 @@ export class BodyPipe {
           if (this.error) controller.error(this.error);
           else controller.close();
         },
-        cancel: (reason) => {
-          console.log('DBG cancel', String(reason));
-          this.cancelled = true;
-          this.queue = [];
-          onCancel(reason);
-        },
+        cancel: (reason) => this.cancel(reason),
       },
       { highWaterMark: 0 },
     );
+  }
+
+  cancel(reason) {
+    if (this.cancelled) return;
+    this.cancelled = true;
+    this.queue = [];
+    clearInterval(this.stallTimer);
+    this.onCancel(reason);
+  }
+
+  // Not every runtime path tells a Durable Object that the browser hung up
+  // (e.g. local workerd never cancels the stream). A response whose bytes
+  // nobody pulls for stallMs is treated as abandoned.
+  watchStall() {
+    if (!this.stallMs || this.stallTimer) return;
+    this.stallTimer = setInterval(() => {
+      if (this.cancelled || (this.ended && !this.queue.length) || this.error) return clearInterval(this.stallTimer);
+      if (this.queue.length && Date.now() - this.lastPull > this.stallMs) this.cancel(new Error('response stalled'));
+    }, Math.min(5_000, Math.max(250, this.stallMs / 4)));
   }
 
   notify() {
@@ -143,17 +166,20 @@ export class BodyPipe {
   push(chunk) {
     if (this.cancelled || this.ended) return false;
     this.queue.push(chunk);
+    this.watchStall();
     this.notify();
     return true;
   }
 
   end() {
     this.ended = true;
+    clearInterval(this.stallTimer);
     this.notify();
   }
 
   abort(err) {
     this.error = err || new Error('aborted');
+    clearInterval(this.stallTimer);
     this.notify();
   }
 }

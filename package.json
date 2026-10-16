@@ -2,6 +2,7 @@
   "name": "localcloud-cli",
   "version": "0.1.0",
   "description": "Share localhost from anywhere — built for cloud coding agents (Claude Code, Codex, Cursor, Devin, …). One command, public HTTPS URL, works through locked-down egress proxies.",
+  "mcpName": "io.github.rayhankhilji/localcloud",
   "type": "module",
   "bin": {
     "localcloud": "bin/localcloud.js"
@@ -17,7 +18,7 @@
     "relay": "node bin/localcloud.js relay"
   },
   "engines": {
-    "node": ">=18.18"
+    "node": ">=20"
   },
   "dependencies": {
     "ws": "^8.22.0"
@@ -37,6 +38,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rayhankhilji/localcloud.git"
+  },
+  "homepage": "https://github.com/rayhankhilji/localcloud#readme",
+  "bugs": {
+    "url": "https://github.com/rayhankhilji/localcloud/issues"
   },
   "license": "MIT"
 }

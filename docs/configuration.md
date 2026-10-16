@@ -72,7 +72,7 @@ This is useful on your own machine, or in a long-lived VM where you don't want t
 | Variable | Purpose |
 |---|---|
 | `LOCALCLOUD_RELAY`, `LOCALCLOUD_TOKEN`, `LOCALCLOUD_TRANSPORT` | See [Settings](#settings). |
-| `LOCALCLOUD_HOME` | Directory for the user config, daemon socket, log and state (default `~/.localcloud`). Each home has its own daemon. |
+| `LOCALCLOUD_HOME` | Directory for the user config, daemon socket, log, state and `identity` file (default `~/.localcloud`). Each home has its own daemon. The `identity` file (mode 0600) holds a per-machine secret that lets a restarted CLI or daemon reclaim its tunnel names immediately — don't share it. |
 | `LOCALCLOUD_IGNORE_PORTS` | Ports that watch mode never shares, e.g. `8081,9000`. |
 | `LOCALCLOUD_DEBUG` | Print stack traces on errors. |
 | `NO_COLOR` | Disable ANSI colors. |

@@ -22,7 +22,7 @@ platform X"), and code are all welcome.
 
 ## Development setup
 
-You need Node.js **18.18 or newer** (CI also tests newer LTS releases) and git.
+You need Node.js **20 or newer** (CI also tests newer LTS releases) and git.
 
 ```sh
 git clone https://github.com/rayhankhilji/localcloud
@@ -114,7 +114,7 @@ wire format in [docs/protocol.md](docs/protocol.md).
   supply-chain surface matter. Dev dependencies should be rare too, and the test suite uses
   `node:test`.
 - Use Node built-ins with the `node:` prefix (`import fs from 'node:fs'`).
-- Keep the code working on Node 18.18. Avoid APIs newer than that, or feature-detect them.
+- Keep the code working on Node 20. Avoid APIs newer than that, or feature-detect them.
 - Formatting: 2-space indent, single quotes, semicolons, trailing commas, a line width of about
   160. Prettier with those settings matches the existing code.
 - Errors shown to users should say **what to do next**, not just what failed. See `friendly()` in

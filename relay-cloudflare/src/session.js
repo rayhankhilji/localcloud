@@ -510,7 +510,7 @@ export class Session extends DurableObject {
             stream.out.cancel();
             send(T.ABORT, { code: 'ECONNRESET', message: 'browser went away' });
           }
-        });
+        }, this.cfg.stallMs);
         resolve(new Response(pipe.stream, init));
       },
       onData: (chunk) => {
