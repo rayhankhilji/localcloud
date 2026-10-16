@@ -20,6 +20,9 @@ export const NPX = 'npx -y localcloud-cli';
 const START = '<!-- localcloud:start -->';
 const END = '<!-- localcloud:end -->';
 const MCP_ARGS = ['-y', 'localcloud-cli', 'mcp'];
+const REPO = 'https://github.com/rayhankhilji/localcloud';
+const DOCS = `${REPO}/blob/main/docs/agents`;
+const SNIPPETS = `${REPO}/tree/main/integrations`;
 
 // ---------------------------------------------------------------- content
 
@@ -409,7 +412,7 @@ function writeCline(changes, block) {
 
 function writeCursorEnvironment(changes, relayHost) {
   const rel = path.join('.cursor', 'environment.json');
-  if (changes.read(rel) === null) return changes.note(rel, 'skipped', 'no environment.json — add a "terminals" entry running `localcloud start` (see docs/agents/cursor.md)');
+  if (changes.read(rel) === null) return changes.note(rel, 'skipped', `no environment.json — add a "terminals" entry running \`localcloud start\` (${DOCS}/cursor.md)`);
   return editJson(changes, rel, (data) => {
     let changed = false;
     const terminals = Array.isArray(data.terminals) ? data.terminals : [];
@@ -439,7 +442,7 @@ function writeCopilotSetup(changes) {
   return changes.edit(rel, (text) => {
     if (text === null) return copilotSetupSteps();
     if (/localcloud/.test(text)) return { unchanged: 'already installs localcloud' };
-    return { skip: 'exists — add the two localcloud steps from integrations/copilot/copilot-setup-steps.yml by hand' };
+    return { skip: `exists — add the two localcloud steps from ${SNIPPETS}/copilot by hand` };
   });
 }
 
@@ -496,16 +499,16 @@ export function init(flags = {}) {
   if (has('copilot')) {
     changes.edit(path.join('.github', 'copilot-instructions.md'), (t) => applyBlock(t, block));
     if (setup) writeCopilotSetup(changes);
-    if (mcp) hints.push('Copilot coding agent: paste integrations/copilot/mcp-config.json into Settings → Copilot → MCP servers (repository settings; not a file).');
+    if (mcp) hints.push(`Copilot coding agent: paste the MCP JSON from ${SNIPPETS}/copilot into the repo's Settings → Copilot → MCP servers.`);
   }
   if (has('windsurf')) {
     const rulesDir = isDir(dir, '.devin/rules') && !exists(dir, '.windsurf') ? '.devin/rules' : '.windsurf/rules';
     changes.edit(path.join(rulesDir, 'localcloud.md'), (t) => applyBlock(t, block, { header: WINDSURF_FRONT }));
-    if (mcp) hints.push('Windsurf MCP servers are configured per user in ~/.codeium/windsurf/mcp_config.json — see integrations/windsurf/.');
+    if (mcp) hints.push(`Windsurf MCP servers are per user (~/.codeium/windsurf/mcp_config.json): ${SNIPPETS}/windsurf`);
   }
   if (has('cline')) {
     writeCline(changes, block);
-    if (mcp) hints.push('Cline MCP servers are configured per user in the Cline extension (cline_mcp_settings.json) — see integrations/cline/.');
+    if (mcp) hints.push(`Cline MCP servers are per user (Cline's MCP settings): ${SNIPPETS}/cline`);
   }
   if (has('gemini')) {
     writeGemini(changes, block);
@@ -549,10 +552,10 @@ Configured for: ${Object.keys(result.agents).join(', ')}${others.length ? c.dim(
   ${c.cyan(`${NPX} start`)}
 
   • Claude Code (cloud)   handled by the SessionStart hook above
-  • Codex (cloud)         ask in AGENTS.md (setup-script processes don't survive) — see docs/agents/codex.md
+  • Codex (cloud)         AGENTS.md tells the agent to share; install in the setup script
   • Cursor (cloud agents) .cursor/environment.json "terminals"  (localcloud init --setup)
   • Copilot coding agent  .github/workflows/copilot-setup-steps.yml  (localcloud init --setup)
-  • Devin, Jules, others  see docs/agents/
+  • Devin, Jules, others  ${DOCS}/README.md
 ${result.relay ? '' : `\n${c.yellow('Tip:')} commit a relay so nobody has to configure anything: ${c.bold('localcloud init --relay https://your-relay')}`}
 ${c.dim(`Remember: the sandbox must be allowed to reach ${result.relay ? new URL(result.relay).hostname : 'your relay domain'} (network allowlist).`)}
 ${flagOn(flags.mcp) ? '' : c.dim('Add --mcp to also register the localcloud MCP server for each tool.\n')}`);

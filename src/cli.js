@@ -23,9 +23,14 @@ ${c.bold('Usage')}
   localcloud doctor                 Check connectivity (proxy, websocket, long-poll)
 
   localcloud init [--relay <url>]   Teach your coding agents to use localcloud in this repo
-  localcloud mcp                    Run as an MCP server (tools: share_port, list_shared, stop_sharing)
-  localcloud relay                  Run your own relay server
-  localcloud config [set <key> <value>]
+                                    --agents <list> | --all, --mcp, --setup, --skill, --no-hook,
+                                    --no-detect, --no-claude, --dry-run
+  localcloud mcp                    Run as an MCP server (tools: share_port, get_url, list_shared,
+                                    stop_sharing, auto_share, status)
+  localcloud relay                  Run your own relay server:
+                                    --domain <d> [--port <n>] [--token <t>] [--routing <mode>]
+                                    [--public-url <url>] [--http] [--trust-proxy=false]
+  localcloud config                 Show settings;  config set <key> <value>  /  config unset <key>
 
 ${c.bold('Options')}
   --relay <url>          Relay to use              (env LOCALCLOUD_RELAY, or localcloud.json)
@@ -35,6 +40,8 @@ ${c.bold('Options')}
   --auth <user:pass>     Require HTTP basic auth
   --host-header <mode>   rewrite (default: dev server sees localhost) | preserve | <custom host>
   --transport <mode>     auto (default) | ws | http
+  --watch / --no-watch   start: also auto-share new dev servers (default only when no port is given)
+  -q, --quiet            Don't print a line per request (foreground)
   --json                 Machine-readable output
   -h, --help / -v, --version
 
@@ -44,7 +51,13 @@ ${c.bold('Examples')}
   npx localcloud-cli run -- npm run dev
 `;
 
-const BOOLEAN = new Set(['protect', 'json', 'help', 'version', 'watch', 'no-watch', 'follow', 'quiet', 'insecure', 'http', 'force', 'mcp', 'no-hook', 'print']);
+const BOOLEAN = new Set([
+  'protect', 'json', 'help', 'version', 'watch', 'no-watch', 'follow', 'quiet', 'insecure', 'http', 'force', 'print',
+  // init
+  'mcp', 'no-hook', 'all', 'setup', 'skill', 'dry-run', 'no-detect', 'no-claude',
+  // relay
+  'trust-proxy', 'no-trust-proxy',
+]);
 const ALIASES = { h: 'help', v: 'version', f: 'follow', n: 'name', p: 'port', q: 'quiet' };
 
 export function parseArgs(argv) {

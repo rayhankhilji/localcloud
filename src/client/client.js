@@ -32,6 +32,8 @@ export class Client extends EventEmitter {
     if (opts.proxy !== undefined) this.netOpts.proxy = opts.proxy;
     if (opts.noProxy !== undefined) this.netOpts.noProxy = opts.noProxy;
     this.secret = opts.secret || crypto.randomBytes(24).toString('base64url');
+    // Identifies this Client object across its reconnects (the secret may be shared per machine).
+    this.instance = crypto.randomBytes(9).toString('base64url');
     this.tunnels = new Map(); // key -> tunnel
     this.byId = new Map(); // relay id -> tunnel
     this.streams = new Map();
@@ -181,6 +183,7 @@ export class Client extends EventEmitter {
         encodeFrame(T.HELLO, 0, {
           v: PROTOCOL_VERSION,
           token: this.token,
+          instance: this.instance,
           client: { version: VERSION, platform: process.platform, hostname: os.hostname(), agent: detectAgent() },
         }),
       );
@@ -314,7 +317,7 @@ export class Client extends EventEmitter {
     return p.then(
       (msg) => {
         if (t.id && t.id !== msg.id) this.byId.delete(t.id);
-        const changed = t.url && t.url !== msg.url;
+        const changed = !!t.url && (t.url !== msg.url || (t.accessUrl || null) !== (msg.accessUrl || null));
         t.id = msg.id;
         t.url = msg.url;
         t.accessUrl = msg.accessUrl;

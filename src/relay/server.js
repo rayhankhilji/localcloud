@@ -373,6 +373,7 @@ class Session {
     if (this.ready) return;
     this.ready = true;
     this.client = msg.client && typeof msg.client === 'object' ? msg.client : {};
+    this.instance = typeof msg.instance === 'string' ? msg.instance : null;
     this.send(T.WELCOME, 0, { ok: true, version: VERSION, routing: relay.routing, transport: this.transport.kind });
     const c = this.client;
     relay.log(`client connected via ${this.transport.kind} from ${this.remote} (localcloud ${c.version || '?'}, ${c.agent || 'unknown'} on ${c.platform || '?'})`);
@@ -405,8 +406,8 @@ class Session {
     if (tunnel?.session && tunnel.session !== this) {
       const old = tunnel.session;
       old.tunnels.delete(id);
-      // Same client on a new connection: the old one is dead even if TCP hasn't noticed yet.
-      if (old.secret === msg.secret) old.close();
+      // The same client process on a new connection: the old one is dead even if TCP hasn't noticed yet.
+      if (old.instance && old.instance === this.instance) old.close();
     }
     if (!tunnel) {
       tunnel = { id, secret: msg.secret, session: null, waiters: [], offlineSince: 0 };
@@ -417,7 +418,6 @@ class Session {
     tunnel.basicAuth = typeof msg.basicAuth === 'string' && msg.basicAuth.includes(':') ? msg.basicAuth : null;
     tunnel.session = this;
     tunnel.offlineSince = 0;
-    this.secret = msg.secret;
     this.tunnels.set(id, tunnel);
     for (const w of tunnel.waiters.splice(0)) w(this);
 
@@ -606,7 +606,7 @@ export class Relay extends EventEmitter {
     if (this.routing === 'subdomain' && !this.domain) throw new Error('subdomain routing needs --domain');
     this.token = opts.token || null;
     this.insecure = !!opts.insecure;
-    this.trustProxy = opts.trustProxy ?? true;
+    this.trustProxy = opts.trustProxy ?? !/^(0|false|no|off)$/i.test(process.env.LOCALCLOUD_TRUST_PROXY || '');
     this.log = opts.log || noop;
     // Generous defaults: many agent sandboxes share a handful of egress IPs.
     this.maxSessionsPerIp = opts.maxSessionsPerIp ?? envInt('LOCALCLOUD_MAX_SESSIONS_PER_IP', 200);

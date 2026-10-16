@@ -5,6 +5,7 @@
 //   4. user file                   ~/.localcloud/config.json
 //   5. the built-in default relay
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -39,6 +40,34 @@ export function findProjectConfig(start = process.cwd()) {
     if (parent === dir) return null;
     dir = parent;
   }
+}
+
+/**
+ * A per-machine secret that proves to the relay that tunnel names are ours, so a
+ * restarted CLI or daemon reclaims its --name right away instead of finding it
+ * reserved for the process that died. Stored in $LOCALCLOUD_HOME/identity (0600).
+ */
+export function clientSecret() {
+  const file = path.join(homeDir(), 'identity');
+  try {
+    const existing = fs.readFileSync(file, 'utf8').trim();
+    if (existing.length >= 16) return existing;
+  } catch {}
+  const secret = crypto.randomBytes(24).toString('base64url');
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, secret + '\n', { mode: 0o600, flag: 'wx' });
+  } catch (err) {
+    // Another process created it first: use theirs.
+    if (err.code === 'EEXIST') {
+      try {
+        const theirs = fs.readFileSync(file, 'utf8').trim();
+        if (theirs.length >= 16) return theirs;
+      } catch {}
+    }
+    // Read-only home etc.: fall back to a per-process secret.
+  }
+  return secret;
 }
 
 export function userConfigPath() {
