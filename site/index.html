@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>localcloud — share localhost from any cloud coding agent</title>
+<meta name="description" content="One command gives the dev server in your cloud coding agent's sandbox a public HTTPS URL. Works through locked-down, TLS-intercepting egress proxies. Open source, MIT, self-host the relay in 60 seconds.">
+<meta name="theme-color" content="#f7f8fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0e14" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="canonical" href="https://rayhankhilji.github.io/localcloud/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="localcloud">
+<meta property="og:title" content="localcloud — share localhost from anywhere">
+<meta property="og:description" content="Give your cloud coding agent's dev server a public HTTPS URL in one command — even behind locked-down egress proxies. Open source.">
+<meta property="og:url" content="https://rayhankhilji.github.io/localcloud/">
+<meta property="og:image" content="https://rayhankhilji.github.io/localcloud/og.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="localcloud: npx localcloud-cli 3000 turns localhost into a public HTTPS URL">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="localcloud — share localhost from anywhere">
+<meta name="twitter:description" content="Public HTTPS URLs for dev servers running inside cloud coding agents. Works through TLS-intercepting egress proxies.">
+<meta name="twitter:image" content="https://rayhankhilji.github.io/localcloud/og.jpg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&family=Geist+Mono:wght@400..600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"localcloud","applicationCategory":"DeveloperApplication","operatingSystem":"Linux, macOS, Windows","description":"Share localhost dev servers from cloud coding agents at public HTTPS URLs.","license":"https://opensource.org/licenses/MIT","url":"https://rayhankhilji.github.io/localcloud/","codeRepository":"https://github.com/rayhankhilji/localcloud","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="lc-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7dd3fc"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+    <symbol id="lc-cloud" viewBox="3 1 58 58"><path fill="url(#lc-grad)" d="M20 50h26a12 12 0 0 0 1.6-23.9A16 16 0 0 0 17 23.5 13.5 13.5 0 0 0 20 50z"/></symbol>
+    <symbol id="i-github" viewBox="0 0 16 16"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.71 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.22 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.87 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path fill="currentColor" d="m12 2.6 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.4l-5.8 3.1 1.1-6.5L2.6 9.4l6.5-.9z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15H4.5A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3h9A1.5 1.5 0 0 1 15 4.5V5"/></g></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+  </defs>
+</svg>
+
+<header class="nav" id="top">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top" aria-label="localcloud home">
+      <svg class="brand-logo" aria-hidden="true"><use href="#lc-cloud"/></svg>
+      <span>localcloud</span>
+    </a>
+    <nav aria-label="Primary">
+      <ul class="nav-links">
+        <li><a href="#how">How it works</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#setup">Setup</a></li>
+        <li><a href="#self-host">Self-host</a></li>
+        <li><a href="#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <a class="btn btn-sm btn-ghost" href="https://github.com/rayhankhilji/localcloud">
+      <svg class="ico" aria-hidden="true"><use href="#i-github"/></svg><span>GitHub</span>
+    </a>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============================================================ HERO -->
+<section class="hero" aria-labelledby="hero-title">
+  <div class="hero-bg" aria-hidden="true"></div>
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <a class="pill" href="#agents"><span class="pill-dot" aria-hidden="true"></span>Open source · built for cloud coding agents</a>
+      <h1 id="hero-title">Share localhost<br><span class="grad">from anywhere.</span></h1>
+      <p class="lede">Your cloud agent just said <q>it's running on <code>localhost:3000</code></q>. Cool — for the agent. <strong>localcloud</strong> gives that dev server a public HTTPS URL in one command, straight through the locked-down, TLS-intercepting proxies agent sandboxes live behind.</p>
+
+      <div class="install" data-copy="npx localcloud-cli 3000">
+        <span class="install-prompt" aria-hidden="true">$</span>
+        <code class="install-cmd">npx localcloud-cli 3000</code>
+        <button class="copy-btn" type="button" aria-label="Copy install command">
+          <svg class="ico ico-copy" aria-hidden="true"><use href="#i-copy"/></svg>
+          <svg class="ico ico-done" aria-hidden="true"><use href="#i-check"/></svg>
+          <span class="copy-label">Copy</span>
+        </button>
+      </div>
+
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="https://github.com/rayhankhilji/localcloud">
+          <svg class="ico" aria-hidden="true"><use href="#i-star"/></svg>Star on GitHub
+        </a>
+        <a class="btn btn-ghost" href="#self-host">Self-host a relay in 60s <svg class="ico" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      </div>
+      <ul class="hero-meta" aria-label="At a glance">
+        <li>Node 18.18+</li><li>1 dependency</li><li>No account</li><li>MIT</li>
+      </ul>
+    </div>
+
+    <figure class="term-wrap">
+      <div class="term" id="term">
+        <div class="term-bar">
+          <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span class="term-title" aria-hidden="true">~/my-app</span>
+          <div class="term-tabs" role="group" aria-label="Demo scene">
+            <button type="button" class="term-tab" data-scene="0" aria-pressed="true">you</button>
+            <button type="button" class="term-tab" data-scene="1" aria-pressed="false">agent</button>
+          </div>
+        </div>
+<pre class="term-body" id="term-body" aria-hidden="true"><span class="ln"><span class="p">~/my-app $</span> npx localcloud-cli 3000</span>
+<span class="ln"> </span>
+<span class="ln"><span class="ind">  </span><span class="cy cl" aria-hidden="true"></span>  <b>localcloud</b><span class="dim">  · via websocket</span></span>
+<span class="ln"> </span>
+<span class="ln"><span class="ind">  </span><span class="gr">➜</span>  <b>Public</b>   <b class="cy">https://sunny-otter-x7k2.example.com</b></span>
+<span class="ln"><span class="ind">  </span><span class="dim">➜  Local    http://localhost:3000</span></span>
+<span class="ln"> </span>
+<span class="ln"><span class="ind">  </span><span class="dim">Requests will show up below. Ctrl+C to stop.</span></span>
+<span class="ln"> </span>
+<span class="ln"><span class="ind">  </span><span class="dim t">14:02:11  </span><b>GET   </b> <span class="gr">200</span> <span class="dim">   38ms</span>  /</span>
+<span class="ln"><span class="ind">  </span><span class="dim t">14:02:11  </span><b>GET   </b> <span class="gr">200</span> <span class="dim">    6ms</span>  /favicon.ico</span>
+<span class="ln"><span class="ind">  </span><span class="dim t">14:02:12  </span><b>GET   </b> <span class="mg">WS </span> <span class="dim">    4ms</span>  /_next/webpack-hmr</span></pre>
+      </div>
+      <figcaption class="sr-only">Terminal demo: running <code>npx localcloud-cli 3000</code> prints a public URL, https://sunny-otter-x7k2.example.com, that forwards to http://localhost:3000, then logs incoming requests including the hot-reload websocket.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ============================================================ AGENTS -->
+<section class="agents" id="agents" aria-labelledby="agents-title">
+  <div class="wrap">
+    <h2 class="eyebrow" id="agents-title">Made for agents that live in the cloud</h2>
+    <ul class="chips">
+      <li>Claude Code on the web</li>
+      <li>Codex cloud</li>
+      <li>Cursor background agents</li>
+      <li>Devin</li>
+      <li>GitHub Copilot coding agent</li>
+      <li>Jules</li>
+      <li>Replit</li>
+      <li>Docker &amp; CI</li>
+      <li>…and your laptop</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ============================================================ HOW -->
+<section class="section" id="how" aria-labelledby="how-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">How it works</p>
+      <h2 id="how-title">Outbound only. Through the proxy. Out the other side.</h2>
+      <p class="sub">Agent sandboxes can't accept inbound connections and usually reach the internet only through an allowlisting, TLS-intercepting proxy. localcloud dials <em>out</em> to a relay you control, and your browser meets it there.</p>
+    </div>
+
+    <div class="diagram card">
+      <!-- wide layout -->
+      <svg class="dg dg-wide" viewBox="0 0 1200 300" role="img" aria-labelledby="dg-t dg-d">
+        <title id="dg-t">Request path</title>
+        <desc id="dg-d">Inside the agent sandbox, the localcloud client connects to the dev server on localhost:3000 and dials out through the egress proxy to your relay over a websocket or HTTPS long-poll. Your browser opens the public URL on the relay, and requests flow back down the tunnel.</desc>
+        <rect class="dg-zone" x="8" y="20" width="420" height="260" rx="22"/>
+        <text class="dg-zl" x="34" y="56">AGENT SANDBOX</text>
+
+        <path class="dg-line" d="M192 170H256"/>
+        <path class="dg-line dg-flow" d="M416 170H530"/>
+        <path class="dg-line dg-flow" d="M690 170H780"/>
+        <path class="dg-line dg-flow dg-rev" d="M940 170H1030"/>
+        <text class="dg-ll" x="224" y="156" text-anchor="middle">:3000</text>
+        <text class="dg-ll" x="479" y="156" text-anchor="middle">wss:// or</text>
+        <text class="dg-ll" x="479" y="196" text-anchor="middle">long-poll</text>
+        <text class="dg-ll" x="735" y="156" text-anchor="middle">tunnel</text>
+        <text class="dg-ll" x="985" y="156" text-anchor="middle">https://</text>
+
+        <g class="dg-node" transform="translate(32 104)">
+          <rect width="160" height="132" rx="16"/>
+          <text class="dg-ic" x="80" y="44" text-anchor="middle">&lt;/&gt;</text>
+          <text class="dg-tt" x="80" y="82" text-anchor="middle">Dev server</text>
+          <text class="dg-st" x="80" y="104" text-anchor="middle">vite · next · …</text>
+        </g>
+        <g class="dg-node dg-hl" transform="translate(256 104)">
+          <rect width="160" height="132" rx="16"/>
+          <use href="#lc-cloud" x="58" y="16" width="44" height="44"/>
+          <text class="dg-tt" x="80" y="82" text-anchor="middle">localcloud</text>
+          <text class="dg-st" x="80" y="104" text-anchor="middle">client / daemon</text>
+        </g>
+        <g class="dg-node" transform="translate(530 104)">
+          <rect width="160" height="132" rx="16"/>
+          <path class="dg-shield" transform="translate(64 16)" d="M16 2 4 6.5v8.6C4 22.6 9.2 28.4 16 30c6.8-1.6 12-7.4 12-14.9V6.5z"/>
+          <text class="dg-tt" x="80" y="82" text-anchor="middle">Egress proxy</text>
+          <text class="dg-st" x="80" y="104" text-anchor="middle">HTTPS_PROXY + CA</text>
+        </g>
+        <g class="dg-node dg-hl" transform="translate(780 104)">
+          <rect width="160" height="132" rx="16"/>
+          <use href="#lc-cloud" x="58" y="16" width="44" height="44"/>
+          <text class="dg-tt" x="80" y="82" text-anchor="middle">Your relay</text>
+          <text class="dg-st" x="80" y="104" text-anchor="middle">*.example.com</text>
+        </g>
+        <g class="dg-node" transform="translate(1030 104)">
+          <rect width="160" height="132" rx="16"/>
+          <rect class="dg-win" x="58" y="20" width="44" height="32" rx="5"/>
+          <path class="dg-win-bar" d="M58 29h44"/>
+          <text class="dg-tt" x="80" y="82" text-anchor="middle">You</text>
+          <text class="dg-st" x="80" y="104" text-anchor="middle">any browser</text>
+        </g>
+      </svg>
+
+      <!-- narrow layout -->
+      <svg class="dg dg-tall" viewBox="0 0 340 640" role="img" aria-labelledby="dg-t2">
+        <title id="dg-t2">Request path: dev server and localcloud client inside the agent sandbox, through the egress proxy, to your relay, to your browser.</title>
+        <rect class="dg-zone" x="6" y="6" width="328" height="196" rx="20"/>
+        <text class="dg-zl" x="26" y="36">AGENT SANDBOX</text>
+        <path class="dg-line" d="M154 124H186"/>
+        <path class="dg-line dg-flow" d="M252 180V212Q252 224 240 224H182Q170 224 170 236V266"/>
+        <path class="dg-line dg-flow" d="M170 362V420"/>
+        <path class="dg-line dg-flow dg-rev" d="M170 516V552"/>
+        <text class="dg-ll" x="184" y="250">wss:// or long-poll</text>
+        <text class="dg-ll" x="184" y="396">tunnel</text>
+        <text class="dg-ll" x="184" y="540">https://</text>
+        <g class="dg-node" transform="translate(22 56)">
+          <rect width="132" height="124" rx="14"/>
+          <text class="dg-ic" x="66" y="42" text-anchor="middle">&lt;/&gt;</text>
+          <text class="dg-tt" x="66" y="78" text-anchor="middle">Dev server</text>
+          <text class="dg-st" x="66" y="100" text-anchor="middle">localhost:3000</text>
+        </g>
+        <g class="dg-node dg-hl" transform="translate(186 56)">
+          <rect width="132" height="124" rx="14"/>
+          <use href="#lc-cloud" x="46" y="12" width="40" height="40"/>
+          <text class="dg-tt" x="66" y="78" text-anchor="middle">localcloud</text>
+          <text class="dg-st" x="66" y="100" text-anchor="middle">client / daemon</text>
+        </g>
+        <g class="dg-node" transform="translate(70 266)">
+          <rect width="200" height="96" rx="14"/>
+          <path class="dg-shield" transform="translate(16 32)" d="M16 2 4 6.5v8.6C4 22.6 9.2 28.4 16 30c6.8-1.6 12-7.4 12-14.9V6.5z"/>
+          <text class="dg-tt" x="60" y="44">Egress proxy</text>
+          <text class="dg-st" x="60" y="66">HTTPS_PROXY + CA</text>
+        </g>
+        <g class="dg-node dg-hl" transform="translate(70 420)">
+          <rect width="200" height="96" rx="14"/>
+          <use href="#lc-cloud" x="12" y="26" width="40" height="40"/>
+          <text class="dg-tt" x="60" y="44">Your relay</text>
+          <text class="dg-st" x="60" y="66">*.example.com</text>
+        </g>
+        <g class="dg-node" transform="translate(70 552)">
+          <rect width="200" height="80" rx="14"/>
+          <rect class="dg-win" x="14" y="24" width="36" height="28" rx="5"/>
+          <path class="dg-win-bar" d="M14 32h36"/>
+          <text class="dg-tt" x="60" y="36">You</text>
+          <text class="dg-st" x="60" y="58">any browser</text>
+        </g>
+      </svg>
+    </div>
+
+    <ol class="steps">
+      <li class="card step">
+        <span class="step-n" aria-hidden="true">1</span>
+        <h3>Dial out, never in</h3>
+        <p>The client opens a WebSocket to your relay — through <code>HTTPS_PROXY</code>, trusting the sandbox's custom CA. If the proxy mangles WebSockets, it quietly falls back to plain HTTPS long-polling.</p>
+      </li>
+      <li class="card step">
+        <span class="step-n" aria-hidden="true">2</span>
+        <h3>Get a URL that sticks</h3>
+        <p>The relay hands out a friendly name like <code>sunny-otter-x7k2</code>. Sandbox naps, reconnects, daemon restarts — the URL stays the same, and visitors see a waiting page in the meantime.</p>
+      </li>
+      <li class="card step">
+        <span class="step-n" aria-hidden="true">3</span>
+        <h3>Your dev server sees localhost</h3>
+        <p>Requests stream down the tunnel with <code>Host</code> and <code>Origin</code> rewritten to <code>localhost:3000</code>, so Vite, Next.js and Angular host checks pass and HMR websockets just reconnect.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ============================================================ FEATURES -->
+<section class="section" id="features" aria-labelledby="features-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Features</p>
+      <h2 id="features-title">Small tool. Sweats the details.</h2>
+      <p class="sub">Everything an agent (or a human) needs to put a preview in front of someone, and nothing it has to be told twice.</p>
+    </div>
+
+    <div class="bento">
+      <article class="card feat feat-wide">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.7 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.8 7.5-9.5V6z"/><path d="m8.8 12 2.2 2.2 4.4-4.4"/></svg></div>
+        <h3>Gets out of locked-down sandboxes</h3>
+        <p>Honors <code>HTTPS_PROXY</code> / <code>NO_PROXY</code> and picks up intercepting CAs from <code>NODE_EXTRA_CA_CERTS</code>, <code>SSL_CERT_FILE</code> and friends. WebSocket first, HTTPS long-poll when that's all the proxy allows. <code>localcloud doctor</code> tells you exactly which path works.</p>
+<pre class="mini-term" aria-label="Example doctor output"><span class="p">$</span> npx localcloud-cli doctor
+  <span class="dim">•</span> egress proxy proxy.internal:3128
+  <span class="dim">•</span> extra CA certificates loaded
+  <span class="gr">✓</span> relay reachable in 84ms
+  <span class="gr">✓</span> websocket transport works (fastest)
+  <span class="gr">✓</span> https long-poll transport works (fallback)</pre>
+      </article>
+
+      <article class="card feat">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></div>
+        <h3>Background mode for agents</h3>
+        <p><code>localcloud start 3000</code> prints the URL and returns, so the agent's turn keeps going. With no port, it watches and auto-shares <em>every</em> dev server that starts listening.</p>
+      </article>
+
+      <article class="card feat">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+        <h3>HMR keeps working</h3>
+        <p>WebSocket upgrades are tunneled end to end. Save a file in the sandbox, watch the page update on your phone.</p>
+      </article>
+
+      <article class="card feat">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 14l2 2 4-4"/></svg></div>
+        <h3>Host checks just pass</h3>
+        <p>No <code>allowedHosts</code>, no <code>--host 0.0.0.0</code>. The dev server thinks it's talking to localhost. Need the real host? <code>--host-header preserve</code>.</p>
+      </article>
+
+      <article class="card feat">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></div>
+        <h3>Stable, friendly URLs</h3>
+        <p>Same URL across reconnects, or pick your own with <code>--name my-app</code> → <code>my-app.example.com</code>.</p>
+      </article>
+
+      <article class="card feat feat-wait">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></div>
+        <h3>Waiting pages, not error pages</h3>
+        <p>Server still booting or sandbox reconnecting? Visitors get a calm page that reloads itself the moment it's back.</p>
+        <div class="wait-demo" aria-hidden="true">
+          <svg viewBox="3 1 58 58"><use href="#lc-cloud"/></svg>
+          <div><strong>Nothing is answering on port 3000 yet</strong><span><i class="pulse"></i>Waiting… this page refreshes by itself.</span></div>
+        </div>
+      </article>
+
+      <article class="card feat">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 3v4M15 3v4M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></svg></div>
+        <h3>MCP server built in</h3>
+        <p><code>localcloud mcp</code> exposes <code>share_port</code>, <code>list_shared</code>, <code>stop_sharing</code> and <code>auto_share</code> as tools.</p>
+      </article>
+
+      <article class="card feat">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h10l4 4v12H5z"/><path d="M14 4v5h5M8.5 13h7M8.5 16.5h5"/></svg></div>
+        <h3>Teaches your agents</h3>
+        <p><code>localcloud init</code> writes instructions to <code>AGENTS.md</code> / <code>CLAUDE.md</code> and a Claude Code <code>SessionStart</code> hook. Zero prompting after that.</p>
+      </article>
+
+      <article class="card feat">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg></div>
+        <h3>Private when you want</h3>
+        <p><code>--protect</code> adds an access key to the link, <code>--auth user:pass</code> adds basic auth, and a relay token decides who may tunnel at all.</p>
+      </article>
+
+      <article class="card feat feat-span">
+        <div class="feat-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="7" rx="2"/><rect x="3.5" y="13" width="17" height="7" rx="2"/><path d="M7.5 7.5h.01M7.5 16.5h.01"/></svg></div>
+        <h3>Your relay, your rules</h3>
+        <p>The relay ships in the same npm package. Run one small container on your own domain — no vendor sitting in the middle of your unreleased previews, and no limits but your box's.</p>
+        <ul class="mini-chips" aria-label="Runs on"><li>Docker</li><li>Fly.io</li><li>Render</li><li>Railway</li><li>Caddy</li><li>Cloudflare Workers</li><li>$5 VPS</li></ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ SETUP -->
+<section class="section" id="setup" aria-labelledby="setup-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Setup</p>
+      <h2 id="setup-title">Set it once per repo. Every agent gets it.</h2>
+      <p class="sub">Point localcloud at your relay, commit, and allow the relay's domain in the agent's network settings. That's the whole ritual.</p>
+    </div>
+
+    <div class="tabs card">
+      <div class="tablist" role="tablist" aria-label="Choose your agent">
+        <button role="tab" type="button" id="tab-claude" aria-controls="panel-claude" aria-selected="true">Claude Code (web)</button>
+        <button role="tab" type="button" id="tab-codex" aria-controls="panel-codex" aria-selected="false" tabindex="-1">Codex</button>
+        <button role="tab" type="button" id="tab-cursor" aria-controls="panel-cursor" aria-selected="false" tabindex="-1">Cursor</button>
+        <button role="tab" type="button" id="tab-devin" aria-controls="panel-devin" aria-selected="false" tabindex="-1">Devin</button>
+        <button role="tab" type="button" id="tab-any" aria-controls="panel-any" aria-selected="false" tabindex="-1">Anything else</button>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-claude" aria-labelledby="tab-claude" tabindex="0">
+        <ol class="howto">
+          <li><p>In your repo, run once and commit the result:</p>
+            <div class="code" data-copy="npx -y localcloud-cli init --relay https://example.com"><pre><span class="p">$</span> npx -y localcloud-cli init --relay https://example.com</pre><button class="copy-btn" type="button" aria-label="Copy command"><svg class="ico ico-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ico ico-done" aria-hidden="true"><use href="#i-check"/></svg></button></div>
+            <p class="note">Writes <code>localcloud.json</code>, <code>AGENTS.md</code>, <code>CLAUDE.md</code> and a <code>SessionStart</code> hook in <code>.claude/settings.json</code>:</p>
+<pre class="snippet"><span class="s">"SessionStart"</span>: [{ <span class="s">"matcher"</span>: <span class="s">"startup"</span>, <span class="s">"hooks"</span>: [{
+  <span class="s">"type"</span>: <span class="s">"command"</span>,
+  <span class="s">"command"</span>: <span class="s">"if [ \"$CLAUDE_CODE_REMOTE\" = \"true\" ]; then npx -y localcloud-cli start || true; fi"</span>
+}]}]</pre></li>
+          <li><p>In the environment's <strong>Network access</strong> settings, add your relay domain to the allowed domains.</p></li>
+          <li><p>Start a session. Every dev server Claude starts gets a public URL, and Claude hands it to you instead of a <code>localhost</code> link.</p></li>
+        </ol>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-codex" aria-labelledby="tab-codex" tabindex="0" hidden>
+        <ol class="howto">
+          <li><p>Commit the agent instructions (Codex reads <code>AGENTS.md</code>):</p>
+            <div class="code" data-copy="npx -y localcloud-cli init --relay https://example.com"><pre><span class="p">$</span> npx -y localcloud-cli init --relay https://example.com</pre><button class="copy-btn" type="button" aria-label="Copy command"><svg class="ico ico-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ico ico-done" aria-hidden="true"><use href="#i-check"/></svg></button></div></li>
+          <li><p>In the Codex environment, turn on agent internet access and allow your relay domain.</p></li>
+          <li><p>Optionally add auto-sharing to <strong>Environment → Setup script</strong>:</p>
+            <div class="code" data-copy="npx -y localcloud-cli start"><pre><span class="p">$</span> npx -y localcloud-cli start</pre><button class="copy-btn" type="button" aria-label="Copy command"><svg class="ico ico-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ico ico-done" aria-hidden="true"><use href="#i-check"/></svg></button></div>
+            <p class="note">Either way, <code>AGENTS.md</code> tells Codex to run <code>npx -y localcloud-cli start &lt;port&gt;</code> whenever it starts a server, and to give you the URL.</p></li>
+        </ol>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-cursor" aria-labelledby="tab-cursor" tabindex="0" hidden>
+        <ol class="howto">
+          <li><p>Commit the agent instructions:</p>
+            <div class="code" data-copy="npx -y localcloud-cli init --relay https://example.com"><pre><span class="p">$</span> npx -y localcloud-cli init --relay https://example.com</pre><button class="copy-btn" type="button" aria-label="Copy command"><svg class="ico ico-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ico ico-done" aria-hidden="true"><use href="#i-check"/></svg></button></div></li>
+          <li><p>Auto-share from <code>.cursor/environment.json</code>, so background agents boot with it:</p>
+<pre class="snippet">{
+  <span class="s">"install"</span>: <span class="s">"npm install"</span>,
+  <span class="s">"start"</span>: <span class="s">"npx -y localcloud-cli start"</span>
+}</pre></li>
+          <li><p>Ask the agent to run the app. It replies with an <code>https://…example.com</code> link you can open anywhere.</p></li>
+        </ol>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-devin" aria-labelledby="tab-devin" tabindex="0" hidden>
+        <ol class="howto">
+          <li><p>Commit the agent instructions:</p>
+            <div class="code" data-copy="npx -y localcloud-cli init --relay https://example.com"><pre><span class="p">$</span> npx -y localcloud-cli init --relay https://example.com</pre><button class="copy-btn" type="button" aria-label="Copy command"><svg class="ico ico-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ico ico-done" aria-hidden="true"><use href="#i-check"/></svg></button></div></li>
+          <li><p>In Devin's <strong>Machine setup</strong>, add a startup command:</p>
+            <div class="code" data-copy="npx -y localcloud-cli start"><pre><span class="p">$</span> npx -y localcloud-cli start</pre><button class="copy-btn" type="button" aria-label="Copy command"><svg class="ico ico-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ico ico-done" aria-hidden="true"><use href="#i-check"/></svg></button></div></li>
+          <li><p>Now <code>npx -y localcloud-cli ls</code> lists every dev server Devin has running, with its public URL.</p></li>
+        </ol>
+      </div>
+
+      <div class="panel" role="tabpanel" id="panel-any" aria-labelledby="tab-any" tabindex="0" hidden>
+        <ol class="howto">
+          <li><p>Anywhere with Node 18.18+ — Copilot coding agent, Jules, Replit, a CI job, your laptop:</p>
+<pre class="snippet"><span class="p">$</span> export LOCALCLOUD_RELAY=https://example.com
+<span class="p">$</span> npx -y localcloud-cli start            <span class="c"># auto-share every dev server</span>
+<span class="p">$</span> npx -y localcloud-cli run -- npm run dev <span class="c"># or wrap one command</span>
+<span class="p">$</span> npx -y localcloud-cli url 5173          <span class="c"># just print the URL</span></pre></li>
+          <li><p>Agent speaks MCP? Add it as a tool server (<code>localcloud init --mcp</code> writes this to <code>.mcp.json</code>):</p>
+<pre class="snippet">{ <span class="s">"mcpServers"</span>: { <span class="s">"localcloud"</span>: {
+  <span class="s">"command"</span>: <span class="s">"npx"</span>, <span class="s">"args"</span>: [<span class="s">"-y"</span>, <span class="s">"localcloud-cli"</span>, <span class="s">"mcp"</span>]
+} } }</pre></li>
+          <li><p>Scripting it? Every command takes <code>--json</code>.</p></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ COMPARE -->
+<section class="section" id="compare" aria-labelledby="compare-title">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="kicker">Compared</p>
+      <h2 id="compare-title">Great tunnels exist. They weren't built for sandboxes.</h2>
+      <p class="sub">ngrok, cloudflared and localtunnel are excellent at what they do. Here's an honest look at where each fits.</p>
+    </div>
+    <div class="table-scroll card" tabindex="0" role="region" aria-labelledby="compare-title">
+      <table class="cmp">
+        <thead>
+          <tr><th scope="col"><span class="sr-only">Capability</span></th><th scope="col" class="us">localcloud</th><th scope="col">ngrok</th><th scope="col">cloudflared</th><th scope="col">localtunnel</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Through HTTPS_PROXY + TLS-intercepting proxy</th><td data-l="localcloud" class="us"><span class="y">Yes</span> ws, then HTTPS long-poll</td><td data-l="ngrok"><span class="m">Partly</span> proxy support, needs config</td><td data-l="cloudflared"><span class="n">Rarely</span> QUIC / HTTP/2 to the edge</td><td data-l="localtunnel"><span class="n">No</span> raw TCP to the server</td></tr>
+          <tr><th scope="row">Background mode + auto-share new ports</th><td data-l="localcloud" class="us"><span class="y">Yes</span></td><td data-l="ngrok"><span class="n">No</span></td><td data-l="cloudflared"><span class="n">No</span></td><td data-l="localtunnel"><span class="n">No</span></td></tr>
+          <tr><th scope="row">Host header rewritten by default</th><td data-l="localcloud" class="us"><span class="y">Yes</span></td><td data-l="ngrok"><span class="m">Flag</span> <code>--host-header</code></td><td data-l="cloudflared"><span class="m">Config</span> <code>httpHostHeader</code></td><td data-l="localtunnel"><span class="m">Flag</span> <code>--local-host</code></td></tr>
+          <tr><th scope="row">WebSockets / HMR</th><td data-l="localcloud" class="us"><span class="y">Yes</span></td><td data-l="ngrok"><span class="y">Yes</span></td><td data-l="cloudflared"><span class="y">Yes</span></td><td data-l="localtunnel"><span class="y">Yes</span></td></tr>
+          <tr><th scope="row">Agent wiring (MCP, AGENTS.md, hooks)</th><td data-l="localcloud" class="us"><span class="y">Built in</span></td><td data-l="ngrok"><span class="n">—</span></td><td data-l="cloudflared"><span class="n">—</span></td><td data-l="localtunnel"><span class="n">—</span></td></tr>
+          <tr><th scope="row">Runs via npx, no account</th><td data-l="localcloud" class="us"><span class="y">Yes</span></td><td data-l="ngrok"><span class="n">No</span> binary + authtoken</td><td data-l="cloudflared"><span class="m">Binary</span> quick tunnels need no account</td><td data-l="localtunnel"><span class="y">Yes</span></td></tr>
+          <tr><th scope="row">Open-source client</th><td data-l="localcloud" class="us"><span class="y">MIT</span></td><td data-l="ngrok"><span class="n">No</span></td><td data-l="cloudflared"><span class="y">Apache-2.0</span></td><td data-l="localtunnel"><span class="y">MIT</span></td></tr>
+          <tr><th scope="row">Self-host the server</th><td data-l="localcloud" class="us"><span class="y">Yes</span> one container</td><td data-l="ngrok"><span class="n">No</span></td><td data-l="cloudflared"><span class="n">No</span> Cloudflare's edge</td><td data-l="localtunnel"><span class="y">Yes</span></td></tr>
+          <tr><th scope="row">Hosted public server, zero setup</th><td data-l="localcloud" class="us"><span class="n">Not yet</span> self-host for now</td><td data-l="ngrok"><span class="y">Yes</span> free tier</td><td data-l="cloudflared"><span class="y">Yes</span> trycloudflare</td><td data-l="localtunnel"><span class="y">Yes</span> loca.lt</td></tr>
+          <tr><th scope="row">Production traffic &amp; edge features</th><td data-l="localcloud" class="us"><span class="n">No</span> dev previews only</td><td data-l="ngrok"><span class="y">Yes</span></td><td data-l="cloudflared"><span class="y">Yes</span></td><td data-l="localtunnel"><span class="n">No</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="fine">To the best of our knowledge as of October 2026. Spotted something wrong? <a href="https://github.com/rayhankhilji/localcloud/issues">Open an issue</a> and we'll fix it.</p>
+  </div>
+</section>
+
+<!-- ============================================================ SELF-HOST -->
+<section class="section" id="self-host" aria-labelledby="sh-title">
+  <div class="wrap sh-grid">
+    <div>
+      <p class="kicker">Self-host</p>
+      <h2 id="sh-title">Your own relay in 60 seconds.</h2>
+      <p class="sub">There's no hosted public relay yet — and for previews of unreleased work, owning the box in the middle is a feature. The relay is one small Node process with one dependency.</p>
+      <ol class="sh-steps">
+        <li><strong>Run it.</strong> Anywhere that can take inbound HTTPS.</li>
+        <li><strong>Point DNS.</strong> <code>example.com</code> and <code>*.example.com</code> at it, with TLS from your platform or Caddy. No wildcard? It falls back to single-domain routing.</li>
+        <li><strong>Connect.</strong> <code>localcloud init --relay https://example.com</code> and commit.</li>
+      </ol>
+      <ul class="chips chips-left" aria-label="Deployment targets">
+        <li>Docker</li><li>Fly.io</li><li>Render</li><li>Railway</li><li>Caddy</li><li>Cloudflare Workers</li><li>Any VPS</li>
+      </ul>
+    </div>
+    <div class="sh-code">
+      <div class="term term-static">
+        <div class="term-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term-title">relay</span>
+          <button class="copy-btn copy-dark" type="button" data-copy-target="docker-cmd" aria-label="Copy docker command"><svg class="ico ico-copy" aria-hidden="true"><use href="#i-copy"/></svg><svg class="ico ico-done" aria-hidden="true"><use href="#i-check"/></svg><span class="copy-label">Copy</span></button>
+        </div>
+<pre class="term-body"><span class="p">$</span> <span id="docker-cmd">docker run -p 8080:8080 -e LOCALCLOUD_DOMAIN=example.com ghcr.io/rayhankhilji/localcloud</span>
+<span class="cy cl" aria-hidden="true"></span>  <b>localcloud</b> relay 0.1.0 listening on 0.0.0.0:8080
+  routing: subdomain (*.example.com)
+  clients: open to anyone <span class="dim">(set LOCALCLOUD_RELAY_TOKEN to restrict)</span>
+
+<span class="c"># or, without Docker</span>
+<span class="p">$</span> LOCALCLOUD_DOMAIN=example.com npx -y localcloud-cli relay</pre>
+      </div>
+      <p class="fine">Guides for each platform live in <a href="https://github.com/rayhankhilji/localcloud/blob/main/docs/self-hosting.md">docs/self-hosting.md</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ FAQ -->
+<section class="section" id="faq" aria-labelledby="faq-title">
+  <div class="wrap faq-wrap">
+    <div class="sec-head">
+      <p class="kicker">FAQ</p>
+      <h2 id="faq-title">Questions, answered.</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>Is there a hosted relay I can use right now?</summary>
+        <p>Not yet. Today you run your own — it's a single container, and the steps above take about a minute. Once you have one, commit it with <code>localcloud init --relay …</code> and nobody on the team (human or agent) configures anything again.</p>
+      </details>
+      <details>
+        <summary>Why not just use ngrok or cloudflared?</summary>
+        <p>On your laptop, they're great. Inside an agent sandbox, outbound traffic usually goes through an allowlisting proxy that terminates TLS with its own CA, and anything that isn't plain HTTPS gets dropped. localcloud is designed for exactly that path, runs from <code>npx</code> without an account, and ships the agent-side glue (background mode, MCP, <code>AGENTS.md</code>, hooks).</p>
+      </details>
+      <details>
+        <summary>My agent says the relay is blocked. What now?</summary>
+        <p>The sandbox's network policy doesn't allow your relay's domain yet. Add it to the environment's allowed domains (in Claude Code on the web: environment → Network access), then run <code>npx -y localcloud-cli doctor</code> to confirm both transports.</p>
+      </details>
+      <details>
+        <summary>Who can open my preview?</summary>
+        <p>Anyone with the URL — names are random, so they're hard to guess, but not secret. Use <code>--protect</code> for a link that carries an access key, <code>--auth user:pass</code> for basic auth, and set <code>LOCALCLOUD_RELAY_TOKEN</code> on the relay to control who can create tunnels.</p>
+      </details>
+      <details>
+        <summary>Do I need to change my Vite / Next.js / Angular config?</summary>
+        <p>No. localcloud rewrites <code>Host</code>, <code>Origin</code> and <code>Referer</code> so the dev server believes it's being visited on localhost. Keep it bound to localhost on its usual port.</p>
+      </details>
+      <details>
+        <summary>What happens when the sandbox goes to sleep?</summary>
+        <p>The client reconnects and reclaims the same URL. Until it does, visitors see a friendly “reconnecting” page that reloads itself, instead of a scary error.</p>
+      </details>
+      <details>
+        <summary>What does it cost?</summary>
+        <p>localcloud is free and MIT-licensed. The only cost is wherever you run the relay — many platforms have a free or near-free tier that's plenty for previews.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ CTA -->
+<section class="cta-band" aria-labelledby="cta-title">
+  <div class="wrap">
+    <div class="cta card">
+      <svg class="cta-cloud" aria-hidden="true"><use href="#lc-cloud"/></svg>
+      <h2 id="cta-title">Stop screenshotting localhost.</h2>
+      <p>If localcloud saved your agent a round of “can you send me a screenshot?”, a star helps other people find it.</p>
+      <div class="hero-ctas cta-btns">
+        <a class="btn btn-primary" href="https://github.com/rayhankhilji/localcloud"><svg class="ico" aria-hidden="true"><use href="#i-star"/></svg>Star rayhankhilji/localcloud</a>
+        <a class="btn btn-ghost" href="https://www.npmjs.com/package/localcloud-cli">View on npm</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap foot-in">
+    <a class="brand" href="#top"><svg class="brand-logo" aria-hidden="true"><use href="#lc-cloud"/></svg><span>localcloud</span></a>
+    <p>MIT licensed · Agent names are trademarks of their respective owners; localcloud is an independent project.</p>
+    <ul class="foot-links">
+      <li><a href="https://github.com/rayhankhilji/localcloud"><svg class="ico" aria-hidden="true"><use href="#i-github"/></svg>GitHub</a></li>
+      <li><a href="https://www.npmjs.com/package/localcloud-cli">npm</a></li>
+      <li><a href="https://github.com/rayhankhilji/localcloud/blob/main/docs/self-hosting.md">Self-hosting</a></li>
+    </ul>
+  </div>
+</footer>
+
+<script src="main.js" defer></script>
+</body>
+</html>
