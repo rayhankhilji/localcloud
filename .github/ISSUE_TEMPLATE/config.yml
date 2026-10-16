@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/rayhankhilji/localcloud/security/advisories/new
+    about: Please report security issues privately, not as public issues.
+  - name: Troubleshooting guide
+    url: https://github.com/rayhankhilji/localcloud/blob/main/docs/troubleshooting.md
+    about: Proxy 403s, network allowlists, host errors, HMR, and other common problems.
+  - name: Agent setup guides
+    url: https://github.com/rayhankhilji/localcloud/blob/main/docs/agents/README.md
+    about: Step-by-step setup for Claude Code, Codex, Cursor, Devin and others.

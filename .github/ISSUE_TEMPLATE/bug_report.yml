@@ -1,0 +1,147 @@
+name: Bug report
+description: Something doesn't work the way the docs say it should.
+title: "[Bug]: "
+labels: ["bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug!
+
+        **Security issue?** Please don't file it here. Report it privately via
+        [Security → Report a vulnerability](https://github.com/rayhankhilji/localcloud/security/advisories/new).
+
+        Before filing, please check [troubleshooting](https://github.com/rayhankhilji/localcloud/blob/main/docs/troubleshooting.md):
+        most problems are a network allowlist that doesn't include the relay.
+        **Remove tokens, access keys and private hostnames** from anything you paste.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: |
+        I ran `npx -y localcloud-cli start 5173` in a Codex cloud task.
+        I expected a URL, but got …
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands, in order. A minimal repo or example app is gold.
+      placeholder: |
+        1. npm create vite@latest app && cd app && npm i
+        2. npm run dev &
+        3. npx -y localcloud-cli start 5173
+        4. Open the URL → …
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where is localcloud running?
+      description: The environment the **client** runs in.
+      options:
+        - Claude Code on the web
+        - Claude Code (local CLI)
+        - OpenAI Codex (cloud)
+        - Cursor background agent
+        - Devin
+        - Google Jules
+        - GitHub Copilot coding agent
+        - Replit
+        - GitHub Codespaces / Gitpod / devcontainer
+        - CI (GitHub Actions or other)
+        - My own machine (macOS)
+        - My own machine (Linux)
+        - My own machine (Windows)
+        - Server / VPS / Docker
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part?
+      multiple: true
+      options:
+        - Foreground sharing (`localcloud <port>`)
+        - Background mode (`start` / `url` / `ls` / `stop`)
+        - Auto-detection / `run`
+        - Connecting through a proxy / transports
+        - Header rewriting / framework compatibility
+        - WebSockets / HMR
+        - "--protect / --auth"
+        - "`init` / agent instructions / hooks"
+        - MCP server
+        - Relay (`localcloud relay` / Docker image)
+        - Cloudflare Workers relay
+        - Docs
+    validations:
+      required: false
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `npx localcloud-cli doctor`
+      description: Run it in the same environment where the problem happens. Strip tokens and private hostnames.
+      render: text
+      placeholder: |
+        ☁  localcloud doctor
+
+          • node v22.… on linux, localcloud 0.1.0
+          • relay https://… (from …)
+          ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / daemon log
+      description: The full error message, and for background mode the relevant part of `npx localcloud-cli logs`. Add `LOCALCLOUD_DEBUG=1` for stack traces.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: localcloud version
+      description: "`npx localcloud-cli --version`"
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: framework
+    attributes:
+      label: Dev server / framework (if relevant)
+      placeholder: "Vite 7 + React, Next.js 16, Django 5, …"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: relay
+    attributes:
+      label: Relay
+      options:
+        - Self-hosted with `localcloud relay` / Docker (subdomain routing)
+        - Self-hosted with `localcloud relay` / Docker (single domain / cookie routing)
+        - Cloudflare Workers relay
+        - A relay someone else runs
+        - Not sure
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Network policy settings, proxy details, screenshots of the browser error page, etc.
+    validations:
+      required: false
