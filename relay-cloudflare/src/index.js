@@ -144,7 +144,11 @@ async function handleApi(cfg, env, request, url) {
   const gone = () => new Response(null, { status: 410, headers: { 'cache-control': 'no-store' } });
 
   if (path === '/health') {
-    return json(200, { ok: true, service: 'localcloud', version: VERSION, protocol: PROTOCOL_VERSION, routing: cfg.routing, runtime: 'cloudflare-workers' });
+    let tunnels;
+    try {
+      tunnels = (await registry(env).count()).online;
+    } catch {}
+    return json(200, { ok: true, service: 'localcloud', version: VERSION, protocol: PROTOCOL_VERSION, routing: cfg.routing, tunnels, runtime: 'cloudflare-workers' });
   }
 
   if (path === '/ws') {
@@ -158,10 +162,11 @@ async function handleApi(cfg, env, request, url) {
     return stub.fetch(internalRequest(request, { op: 'poll-session', base: baseUrlFor(cfg, request), remote: remoteIp(request) }));
   }
 
-  if ((path === '/http/up' || path === '/http/down') && request.method === 'POST') {
+  const pollOps = { '/http/up': 'poll-up', '/http/down': 'poll-down', '/http/close': 'poll-close' };
+  if (pollOps[path] && request.method === 'POST') {
     const s = sessionStub(env, url.searchParams.get('sid'));
     if (!s) return gone();
-    return s.stub.fetch(internalRequest(request, { op: path === '/http/up' ? 'poll-up' : 'poll-down', token: s.token }));
+    return s.stub.fetch(internalRequest(request, { op: pollOps[path], token: s.token }));
   }
 
   if (path.startsWith('/t/')) {

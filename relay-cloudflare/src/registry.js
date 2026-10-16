@@ -44,7 +44,7 @@ export class Registry extends DurableObject {
 
   /**
    * Reserve (or re-claim) a tunnel id for a session.
-   * @param {{name?: string, secret: string, session: string, port?: number, protect?: boolean, basicAuth?: string}} msg
+   * @param {{name?: string, secret: string, session: string, instance?: string|null, port?: number, protect?: boolean, basicAuth?: string}} msg
    */
   async claim(msg) {
     let id;
@@ -60,17 +60,22 @@ export class Registry extends DurableObject {
     }
     rec ||= { id, secret: msg.secret, access: null };
     const previous = rec.session;
+    const previousInstance = rec.instance || null;
     rec.port = msg.port ?? null;
     rec.access = msg.protect ? rec.access || randomToken(18) : null;
     rec.basicAuth = typeof msg.basicAuth === 'string' && msg.basicAuth.includes(':') ? msg.basicAuth : null;
     rec.session = msg.session;
+    rec.instance = typeof msg.instance === 'string' ? msg.instance : null;
     rec.offlineSince = 0;
     await this.ctx.storage.put(KEY(id), rec);
     if (previous && previous !== msg.session) {
       // The client reconnected on a new session: tell the old one to let go.
+      // Same client process (instance) => the old connection is dead even if
+      // the runtime hasn't noticed yet, so close it outright.
+      const stale = !!previousInstance && previousInstance === rec.instance;
       try {
         const stub = this.env.SESSION.get(this.env.SESSION.idFromString(previous));
-        stub.dropTunnel(id).catch(() => {});
+        (stale ? stub.closeStale() : stub.dropTunnel(id)).catch(() => {});
       } catch {}
     }
     this.wake(id);

@@ -394,6 +394,32 @@ async function main() {
       assert.equal(r.status, 200);
     });
 
+    await test('same client instance on a new connection replaces the stale session', async () => {
+      const a = new Client({ relay: RELAY, transport: 'ws', proxy: null });
+      const t = await a.share(local.address().port);
+      // A second connection from the "same process" (same instance + secret) while the first still looks alive.
+      const b = new Client({ relay: RELAY, transport: 'ws', proxy: null, secret: a.secret });
+      b.instance = a.instance;
+      a.closed = true; // don't let `a` reconnect and steal it back
+      const aDropped = new Promise((r) => a.transport.once('close', r));
+      const tb = await b.share(local.address().port, { name: t.id });
+      assert.equal(tb.id, t.id);
+      await Promise.race([aDropped, sleep(5000).then(() => assert.fail('stale session was not closed'))]);
+      assert.equal((await req({ host: new URL(tb.url).host, path: '/' })).status, 200);
+      await b.close();
+    });
+
+    await test('POST /http/close ends a long-poll session', async () => {
+      const s = await req({ method: 'POST', path: '/__localcloud/http/session', headers: { 'content-length': 0 } });
+      const { sid } = JSON.parse(s.body);
+      const c = await req({ method: 'POST', path: `/__localcloud/http/close?sid=${encodeURIComponent(sid)}`, headers: { 'content-length': 0 } });
+      assert.equal(c.status, 204);
+      const d = await req({ method: 'POST', path: `/__localcloud/http/down?sid=${encodeURIComponent(sid)}&ack=0`, headers: { 'content-length': 0 } });
+      assert.equal(d.status, 410);
+      const bogus = await req({ method: 'POST', path: '/__localcloud/http/up?sid=nope&seq=1', headers: { 'content-length': 0 } });
+      assert.equal(bogus.status, 410);
+    });
+
     await test('offline tunnel shows the reconnecting page', async () => {
       const c = new Client({ relay: RELAY, transport: 'ws', proxy: null });
       const t = await c.share(local.address().port);

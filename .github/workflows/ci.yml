@@ -121,3 +121,22 @@ jobs:
       - name: Stop
         if: always()
         run: node bin/localcloud.js stop || true
+
+  cloudflare:
+    name: Cloudflare Workers relay (wrangler dev e2e)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            relay-cloudflare/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: relay-cloudflare
+      - run: npm run test:e2e
+        working-directory: relay-cloudflare

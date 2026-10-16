@@ -161,7 +161,9 @@ export class Session extends DurableObject {
     this.cfg = config(env);
     this.selfId = ctx.id.toString();
     this.streams = new Map(); // sid -> stream
-    this.nextSid = 1;
+    // Random start: after hibernation this class is rebuilt, and stream ids
+    // must not collide with anything the client may still be tearing down.
+    this.nextSid = 1 + Math.floor(Math.random() * 2 ** 30);
     this.poll = null;
     this.lastRx = 0;
     this.persistedRx = 0;
@@ -219,11 +221,16 @@ export class Session extends DurableObject {
       case 'poll-session':
         return this.createPollSession(request);
       case 'poll-up':
-      case 'poll-down': {
+      case 'poll-down':
+      case 'poll-close': {
         const token = request.headers.get(INTERNAL + 'token') || '';
         if (!this.poll || this.poll.closed || !safeEqual(token, this.poll.token)) return new Response(null, { status: 410, headers: { 'cache-control': 'no-store' } });
         const url = new URL(request.url);
         if (op === 'poll-down') return this.poll.handleDown(Number(url.searchParams.get('ack') || 0));
+        if (op === 'poll-close') {
+          this.poll.close();
+          return new Response(null, { status: 204 });
+        }
         const len = Number(request.headers.get('content-length') || 0);
         if (len > MAX_UP_BODY) return new Response(null, { status: 413 });
         const body = Buffer.from(await request.arrayBuffer());
@@ -306,6 +313,18 @@ export class Session extends DurableObject {
       return this.die();
     }
     await this.ctx.storage.setAlarm(Date.now() + LIVENESS_MS);
+  }
+
+  /** Called by the registry when the same client process reconnected elsewhere. */
+  async closeStale() {
+    if (this.dead) return;
+    if (this.poll) this.poll.close();
+    else {
+      try {
+        this.ws()?.close(1001, 'replaced by a newer connection');
+      } catch {}
+    }
+    await this.die();
   }
 
   /** Called by the registry when another session took over a tunnel. */
@@ -392,7 +411,8 @@ export class Session extends DurableObject {
       setTimeout(() => this.closeTransport(), 200);
       return;
     }
-    this.meta = { ...this.meta, ready: true };
+    if (this.meta?.ready) return;
+    this.meta = { ...this.meta, ready: true, instance: typeof msg.instance === 'string' ? msg.instance.slice(0, 128) : null };
     this.ctx.storage.put('meta', this.meta).catch(() => {});
     this.send(T.WELCOME, 0, { ok: true, version: VERSION, routing: this.cfg.routing, transport: this.meta.kind, runtime: 'cloudflare-workers' });
   }
@@ -407,7 +427,8 @@ export class Session extends DurableObject {
       name: msg.name || undefined,
       secret: msg.secret,
       session: this.selfId,
-      port: msg.port,
+      instance: this.meta?.instance || null,
+      port: Number.isInteger(msg.port) ? msg.port : null,
       protect: !!msg.protect,
       basicAuth: msg.basicAuth,
     });
