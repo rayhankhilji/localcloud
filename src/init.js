@@ -252,7 +252,7 @@ class Changes {
     }
   }
   note(rel, action, note) {
-    this.list.push({ file: rel, action, ...(note ? { note } : {}) });
+    this.list.push({ file: rel.split(path.sep).join('/'), action, ...(note ? { note } : {}) });
     return action;
   }
   /** Run `fn(oldText|null)` → new text (string), or {skip: reason}. */

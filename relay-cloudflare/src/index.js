@@ -89,8 +89,8 @@ function remoteIp(request) {
 async function handleTunnelRequest(cfg, env, route, request) {
   const id = route.id;
   const baseUrl = baseUrlFor(cfg, request);
-  const forward = (session) =>
-    env.SESSION.get(env.SESSION.idFromString(session)).fetch(
+  const forward = async (session) => {
+    const resp = await env.SESSION.get(env.SESSION.idFromString(session)).fetch(
       internalRequest(request, {
         op: 'tunnel',
         tunnel: id,
@@ -100,6 +100,11 @@ async function handleTunnelRequest(cfg, env, route, request) {
         origin: publicOrigin(cfg, id, baseUrl),
       }),
     );
+    if (!resp.body || resp.webSocket) return resp;
+    const { readable, writable } = new TransformStream();
+    resp.body.pipeTo(writable).then(() => console.log('DBG pipe done'), (e) => console.log('DBG pipe err', String(e)));
+    return new Response(readable, resp);
+  };
 
   request.signal?.addEventListener('abort', () => console.log('DBG worker signal abort'));
   console.log('DBG has signal', !!request.signal);

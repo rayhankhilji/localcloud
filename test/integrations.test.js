@@ -363,7 +363,7 @@ describe('localcloud mcp', () => {
   test('tools/list exposes annotated tools with valid schemas', async () => {
     const r = await call('tools/list');
     const names = r.result.tools.map((t) => t.name);
-    assert.deepEqual(names, ['share_port', 'get_url', 'list_shared', 'stop_sharing', 'auto_share']);
+    assert.deepEqual(names, ['share_port', 'get_url', 'list_shared', 'stop_sharing', 'auto_share', 'status']);
     for (const t of r.result.tools) {
       assert.equal(t.inputSchema.type, 'object');
       assert.equal(typeof t.description, 'string');
@@ -384,6 +384,10 @@ describe('localcloud mcp', () => {
     assert.deepEqual(url.result.structuredContent, { port: 3000, shared: false, url: null });
     const stop = await call('tools/call', { name: 'stop_sharing', arguments: { port: 3000 } });
     assert.match(stop.result.content[0].text, /not shared/);
+    const st = await call('tools/call', { name: 'status', arguments: {} }, 9);
+    assert.equal(st.result.structuredContent.running, false);
+    assert.equal(st.result.structuredContent.shared, 0);
+    assert.equal(typeof st.result.structuredContent.version, 'string');
   });
 
   test('bad arguments are tool errors; unknown tools are protocol errors', async () => {
@@ -403,7 +407,7 @@ describe('localcloud mcp', () => {
     assert.equal(d.result._meta['io.modelcontextprotocol/serverInfo'].name, 'localcloud');
     const list = await call('tools/list', { _meta: modernMeta });
     assert.equal(list.result.resultType, 'complete');
-    assert.equal(list.result.tools.length, 5);
+    assert.equal(list.result.tools.length, mcp.TOOLS.length);
     const bad = await call('tools/list', { _meta: { 'io.modelcontextprotocol/protocolVersion': '1900-01-01' } });
     assert.equal(bad.error.code, -32022);
     assert.deepEqual(bad.error.data.supported, mcp.SUPPORTED_VERSIONS);
@@ -443,7 +447,7 @@ describe('localcloud mcp', () => {
     assert.equal(code, 0);
     const byId = Object.fromEntries(lines.map((l) => [l.id, l]));
     assert.equal(byId[1].result.protocolVersion, '2025-11-25');
-    assert.equal(byId[2].result.tools.length, 5);
+    assert.equal(byId[2].result.tools.length, mcp.TOOLS.length);
     assert.equal(byId.null.error.code, -32700);
     assert.equal(lines.length, 3, 'notifications get no reply');
   });

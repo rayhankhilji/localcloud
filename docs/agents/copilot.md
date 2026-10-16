@@ -49,7 +49,7 @@ Repository **Settings → Copilot → MCP servers**, paste
       "type": "local",
       "command": "npx",
       "args": ["-y", "localcloud-cli", "mcp"],
-      "tools": ["share_port", "get_url", "list_shared", "stop_sharing", "auto_share"]
+      "tools": ["share_port", "get_url", "list_shared", "stop_sharing", "auto_share", "status"]
     }
   }
 }

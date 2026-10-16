@@ -18,7 +18,7 @@ export const SUPPORTED_VERSIONS = [...MODERN_VERSIONS, ...LEGACY_VERSIONS];
 const META = 'io.modelcontextprotocol/';
 const SERVER_INFO = { name: 'localcloud', title: 'localcloud', version: VERSION };
 const INSTRUCTIONS =
-  'You are likely running somewhere the user cannot open localhost links. After starting any web/dev server the user should see, call share_port with its port and give the user the returned HTTPS URL. Use auto_share to share every dev server automatically, list_shared/get_url to look URLs up again, stop_sharing to take one down. If a tool reports that no relay is configured, ask the user for their relay URL. If it reports a network-policy block, ask them to allow the relay domain in the sandbox network settings.';
+  'You are likely running somewhere the user cannot open localhost links. After starting any web/dev server the user should see, call share_port with its port and give the user the returned HTTPS URL. Use auto_share to share every dev server automatically, list_shared/get_url to look URLs up again, stop_sharing to take one down, status to check the setup. If a tool reports that no relay is configured, ask the user for their relay URL. If it reports a network-policy block, ask them to allow the relay domain in the sandbox network settings.';
 
 const ERR = { PARSE: -32700, INVALID_REQUEST: -32600, NOT_FOUND: -32601, INVALID_PARAMS: -32602, INTERNAL: -32603, UNSUPPORTED_VERSION: -32022 };
 
@@ -89,6 +89,29 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { enabled: { type: 'boolean', default: true, description: 'false turns auto-sharing off' } }, additionalProperties: false },
     annotations: { title: 'Auto-share dev servers', readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
+  {
+    name: 'status',
+    title: 'localcloud status',
+    description:
+      'Check whether localcloud is ready: which relay is configured (and where from), whether the background daemon is running and connected, the transport in use, and whether auto-sharing is on. Call this when sharing fails or before telling the user to configure anything.',
+    inputSchema: { type: 'object', additionalProperties: false },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        relay: { type: ['string', 'null'] },
+        relaySource: { type: ['string', 'null'] },
+        running: { type: 'boolean' },
+        connected: { type: 'boolean' },
+        transport: { type: ['string', 'null'] },
+        autoShare: { type: 'boolean' },
+        shared: { type: 'integer' },
+        error: { type: ['string', 'null'] },
+        version: { type: 'string' },
+      },
+      required: ['relay', 'running', 'connected', 'shared', 'version'],
+    },
+    annotations: { title: 'localcloud status', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  },
 ];
 
 export const RESOURCES = [
@@ -137,6 +160,27 @@ async function callTool(name, args, flags) {
     const snap = await statusSnapshot();
     const head = snap.running ? `${snap.connected ? 'Connected to' : 'Connecting to'} ${snap.relay}${snap.autoShare ? ' · auto-sharing new dev servers' : ''}\n` : '';
     return text(head + format(snap.tunnels), snap);
+  }
+  if (name === 'status') {
+    const cfg = resolveConfig(flags);
+    const st = await daemonStatus();
+    const info = {
+      relay: st?.relay || cfg.relay || null,
+      relaySource: st ? 'daemon' : cfg.relaySource || null,
+      running: !!st,
+      connected: !!st?.connected,
+      transport: st?.transport || null,
+      autoShare: !!st?.watch,
+      shared: st?.tunnels?.length || 0,
+      error: st?.error || null,
+      version: VERSION,
+    };
+    const lines = [
+      info.relay ? `relay: ${info.relay}${info.relaySource ? ` (from ${info.relaySource})` : ''}` : 'relay: not configured — ask the user for their relay URL (LOCALCLOUD_RELAY or localcloud.json)',
+      info.running ? `daemon: running, ${info.connected ? `connected via ${info.transport === 'ws' ? 'websocket' : 'https long-poll'}` : `not connected${info.error ? ` (${info.error})` : ''}`}` : 'daemon: not running (share_port or auto_share starts it)',
+      `auto-share: ${info.autoShare ? 'on' : 'off'} · shared ports: ${info.shared}`,
+    ];
+    return text(lines.join('\n'), info);
   }
   if (name === 'get_url') {
     const port = checkPort(args);

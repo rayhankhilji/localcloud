@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { Client, FatalError } from './client/client.js';
 import { isListening, parseTarget } from './client/forward.js';
-import { normalizeRelay, resolveConfig, userConfigPath, writeUserConfig } from './config.js';
+import { clientSecret, normalizeRelay, resolveConfig, userConfigPath, writeUserConfig } from './config.js';
 import { daemonRequest, daemonStatus, ensureDaemon, paths, runDaemon } from './daemon.js';
 import { banner, c, isInteractive, logo, requestLine } from './ui.js';
 import { VERSION } from './version.js';
@@ -121,7 +121,7 @@ async function cmdShare(targets, flags) {
   const cfg = requireRelay(flags);
   if (flags.name && targets.length > 1) throw new UsageError('--name only works with a single port');
   const parsed = targets.map((t) => (parseTarget(t), t));
-  const client = new Client({ relay: cfg.relay, token: cfg.token, transport: cfg.transport });
+  const client = new Client({ relay: cfg.relay, token: cfg.token, transport: cfg.transport, secret: clientSecret() });
   const json = !!flags.json;
   let shown = false;
 
@@ -137,13 +137,20 @@ async function cmdShare(targets, flags) {
   client.on('request', (r) => {
     if (!json && !flags.quiet) out(requestLine(r));
   });
+  client.on('notice', (m) => err(c.yellow(`  ℹ ${m}`)));
   client.on('fatal', (e) => {
     err(c.red(`✖ ${friendly(e)}`));
     process.exit(1);
   });
 
   const results = [];
-  for (const t of parsed) results.push(await client.share(t, shareOpts(flags)));
+  try {
+    for (const t of parsed) results.push(await client.share(t, shareOpts(flags)));
+  } catch (e) {
+    // e.g. the name is taken: nothing will ever be shared, so don't hang around.
+    await client.close();
+    throw e;
+  }
   shown = true;
   if (json) out(JSON.stringify({ relay: cfg.relay, transport: client.transport?.kind, tunnels: results }));
   else {
@@ -169,7 +176,9 @@ function printTunnelLines(tunnels, json, extra = {}) {
   if (json) return out(JSON.stringify({ ...extra, tunnels }));
   for (const t of tunnels) {
     const local = /^\d+$/.test(t.target) ? `http://localhost:${t.port}` : t.target;
-    out(`${local} → ${c.bold(c.cyan(t.accessUrl || t.url || '(connecting…)'))}${t.online === false ? c.yellow('  (reconnecting)') : ''}`);
+    const url = t.accessUrl || t.url;
+    if (!url) out(`${local} → ${c.yellow('starting…')}`);
+    else out(`${local} → ${c.bold(c.cyan(url))}${t.online === false ? c.yellow('  (reconnecting)') : ''}`);
   }
 }
 
@@ -277,8 +286,9 @@ async function cmdRun(command, flags) {
   if (!command?.length) throw new UsageError('usage: localcloud run -- <command>   e.g. localcloud run -- npm run dev');
   const cfg = requireRelay(flags);
   if (!watchSupported()) throw new UsageError('`localcloud run` needs automatic port detection, which is not available on this platform. Use `localcloud <port>` instead.');
-  const client = new Client({ relay: cfg.relay, token: cfg.token, transport: cfg.transport });
+  const client = new Client({ relay: cfg.relay, token: cfg.token, transport: cfg.transport, secret: clientSecret() });
   client.on('fatal', (e) => err(c.red(`[localcloud] ✖ ${friendly(e)}`)));
+  client.on('notice', (m) => err(c.yellow(`[localcloud] ℹ ${m}`)));
   client.on('status', (s) => {
     if (s.state === 'disconnected') err(c.yellow('[localcloud] connection lost — reconnecting…'));
   });
@@ -373,7 +383,9 @@ async function cmdRelay(flags) {
   const { Relay } = await import('./relay/server.js');
   const env = process.env;
   const insecure = !!(flags.insecure || flags.http);
+  const trustProxy = flags['no-trust-proxy'] ? false : flags['trust-proxy'] !== undefined ? !!flags['trust-proxy'] : undefined; // undefined: LOCALCLOUD_TRUST_PROXY, default on
   const relay = new Relay({
+    trustProxy,
     domain: flags.domain || env.LOCALCLOUD_DOMAIN,
     publicUrl: flags['public-url'] || env.LOCALCLOUD_PUBLIC_URL,
     routing: flags.routing || env.LOCALCLOUD_ROUTING,
@@ -403,6 +415,7 @@ async function cmdConfig(args, flags) {
     return out(`${c.green('✓')} saved ${key} to ${file}`);
   }
   if (args[0] === 'unset') {
+    if (!['relay', 'token', 'transport'].includes(args[1])) throw new UsageError('usage: localcloud config unset <relay|token|transport>');
     const file = writeUserConfig({ [args[1]]: null });
     return out(`${c.green('✓')} removed ${args[1]} from ${file}`);
   }
@@ -421,6 +434,7 @@ export async function main(argv) {
     parsed = parseArgs(argv);
   } catch (e) {
     err(c.red(e.message));
+    process.exitCode = 2;
     return 2;
   }
   const { flags, positional, rest } = parsed;
@@ -435,49 +449,56 @@ export async function main(argv) {
     else return out(HELP);
   }
   try {
-    switch (cmd) {
-      case 'share':
-        if (!args.length) throw new UsageError('which port? e.g. localcloud 3000');
-        return await cmdShare(args, flags);
-      case 'start':
-      case 'up':
-        return await cmdStart(args, flags);
-      case 'url':
-        return await cmdUrl(args, flags);
-      case 'ls':
-      case 'list':
-      case 'status':
-        return await cmdList(flags);
-      case 'stop':
-      case 'down':
-        return await cmdStop(args, flags);
-      case 'logs':
-        return await cmdLogs(flags);
-      case 'run':
-        return await cmdRun(rest || args, flags);
-      case 'doctor':
-        return await cmdDoctor(flags);
-      case 'relay':
-        return await cmdRelay(flags);
-      case 'config':
-        return await cmdConfig(args, flags);
-      case 'init': {
-        const { runInit } = await import('./init.js');
-        return await runInit(flags);
-      }
-      case 'mcp': {
-        const { runMcp } = await import('./mcp.js');
-        return await runMcp(flags);
-      }
-      case '__daemon':
-        return await runDaemon();
-    }
+    const code = await dispatch(cmd, args, flags, rest);
+    // Commands report failures through process.exitCode or a numeric return value.
+    if (typeof code === 'number' && code) process.exitCode = code;
+    return code;
   } catch (e) {
     if (e instanceof UsageError) err(e.message);
     else if (e instanceof FatalError) err(c.red(`✖ ${friendly(e)}`));
     else err(c.red(`✖ ${friendly(e)}`));
     if (process.env.LOCALCLOUD_DEBUG && !(e instanceof UsageError)) err(e.stack);
     process.exitCode = e instanceof UsageError ? 2 : 1;
+  }
+}
+
+async function dispatch(cmd, args, flags, rest) {
+  switch (cmd) {
+    case 'share':
+      if (!args.length) throw new UsageError('which port? e.g. localcloud 3000');
+      return await cmdShare(args, flags);
+    case 'start':
+    case 'up':
+      return await cmdStart(args, flags);
+    case 'url':
+      return await cmdUrl(args, flags);
+    case 'ls':
+    case 'list':
+    case 'status':
+      return await cmdList(flags);
+    case 'stop':
+    case 'down':
+      return await cmdStop(args, flags);
+    case 'logs':
+      return await cmdLogs(flags);
+    case 'run':
+      return await cmdRun(rest || args, flags);
+    case 'doctor':
+      return await cmdDoctor(flags);
+    case 'relay':
+      return await cmdRelay(flags);
+    case 'config':
+      return await cmdConfig(args, flags);
+    case 'init': {
+      const { runInit } = await import('./init.js');
+      return await runInit(flags);
+    }
+    case 'mcp': {
+      const { runMcp } = await import('./mcp.js');
+      return await runMcp(flags);
+    }
+    case '__daemon':
+      return await runDaemon();
   }
 }
 

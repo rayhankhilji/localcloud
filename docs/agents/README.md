@@ -11,7 +11,7 @@ There are three ways an agent can use it — set up as many as you like:
 2. **Auto-share** — the environment's startup script runs `npx -y localcloud-cli start` (no port),
    which starts a background daemon that shares every dev server the moment it starts listening.
 3. **MCP** — `npx -y localcloud-cli mcp` exposes `share_port`, `get_url`, `list_shared`,
-   `stop_sharing` and `auto_share` as tools.
+   `stop_sharing`, `auto_share` and `status` as tools.
 
 ## One command
 

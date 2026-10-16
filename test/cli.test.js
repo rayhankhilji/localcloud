@@ -7,7 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { hostOf, localServer, req, sleep, startRelay, waitFor } from './helpers.js';
+import { parseArgs } from '../src/cli.js';
+import { hostOf, localServer, newClient, req, sleep, startRelay, waitFor } from './helpers.js';
 
 const BIN = fileURLToPath(new URL('../bin/localcloud.js', import.meta.url));
 
@@ -37,6 +38,29 @@ function run(args, { env, cwd, timeout = 30_000 } = {}) {
     });
   });
 }
+
+describe('argument parsing and exit codes', () => {
+  test('boolean flags never swallow the next argument', () => {
+    const { flags, positional } = parseArgs(['init', '--all', '--dry-run', '--no-detect', '--no-claude', '--skill', '--setup', '--mcp', '--no-hook', 'extra']);
+    for (const k of ['all', 'dry-run', 'no-detect', 'no-claude', 'skill', 'setup', 'mcp', 'no-hook']) assert.equal(flags[k], true, k);
+    assert.deepEqual(positional, ['init', 'extra']);
+    assert.deepEqual(parseArgs(['3000', '--name', 'x', '-q', '--trust-proxy=false']).flags, { name: 'x', quiet: true, 'trust-proxy': false });
+    assert.deepEqual(parseArgs(['run', '--', 'npm', 'run', 'dev']).rest, ['npm', 'run', 'dev']);
+  });
+
+  test('usage errors exit 2', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lc-home-'));
+    const env = makeEnv(home);
+    try {
+      for (const args of [['--name'], ['url'], ['config', 'unset', 'bogus'], ['3000']]) {
+        const r = await run(args, { env, cwd: home });
+        assert.equal(r.code, 2, `${args.join(' ')} → ${r.code}: ${r.stderr}`);
+      }
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('daemon via the CLI', () => {
   let relay, app, home, env, cwd;
@@ -206,6 +230,65 @@ describe('relay token via the CLI', () => {
       assert.match(r.stderr, /LOCALCLOUD_TOKEN/);
     } finally {
       await run(['stop'], { env, cwd: home });
+      await app.stop();
+      await relay.relay.close();
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('names across restarts', () => {
+  test('a killed process reclaims its --name immediately (per-machine identity)', async () => {
+    const relay = await startRelay();
+    const app = await localServer((_rq, res) => res.end('named'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lc-home-'));
+    const env = makeEnv(home, { LOCALCLOUD_RELAY: relay.url });
+    try {
+      let r = await run(['start', String(app.port), '--name', 'sticky', '--json'], { env, cwd: home });
+      assert.equal(r.code, 0, r.stderr);
+      const identity = path.join(home, 'identity');
+      assert.equal(fs.statSync(identity).mode & 0o777, 0o600);
+      const pid = (await run(['ls', '--json'], { env, cwd: home })).json().pid;
+      process.kill(pid, 'SIGKILL');
+      await waitFor(() => {
+        try {
+          process.kill(pid, 0);
+          return false;
+        } catch {
+          return true;
+        }
+      });
+      // A foreground share of the same name from this machine works right away.
+      const child = spawn(process.execPath, [BIN, String(app.port), '--name', 'sticky', '--json'], { env, cwd: home, stdio: ['ignore', 'pipe', 'pipe'] });
+      try {
+        let stdout = '';
+        child.stdout.on('data', (d) => (stdout += d));
+        const line = await waitFor(() => stdout.split('\n').find((l) => l.startsWith('{')), { message: 'json output' });
+        assert.equal(JSON.parse(line).tunnels[0].url, 'http://sticky.lc.test');
+        assert.equal((await req(relay.port, { host: 'sticky.lc.test' })).text(), 'named');
+      } finally {
+        child.kill('SIGKILL');
+      }
+    } finally {
+      await app.stop();
+      await relay.relay.close();
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('foreground share exits 1 when the name belongs to someone else', async () => {
+    const relay = await startRelay();
+    const app = await localServer((_rq, res) => res.end());
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'lc-home-'));
+    const env = makeEnv(home, { LOCALCLOUD_RELAY: relay.url });
+    const owner = newClient(relay.url);
+    try {
+      await owner.share(String(app.port), { name: 'owned' });
+      const r = await run([String(app.port), '--name', 'owned'], { env, cwd: home, timeout: 15_000 });
+      assert.equal(r.code, 1);
+      assert.match(r.stderr, /already taken/);
+    } finally {
+      await owner.close();
       await app.stop();
       await relay.relay.close();
       fs.rmSync(home, { recursive: true, force: true });

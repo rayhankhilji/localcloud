@@ -10,7 +10,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from './client/client.js';
-import { homeDir } from './config.js';
+import { clientSecret, homeDir } from './config.js';
 import { VERSION } from './version.js';
 import { PortWatcher, watchSupported } from './watch.js';
 
@@ -114,7 +114,7 @@ export async function runDaemon() {
   const cfg = JSON.parse(process.env.LOCALCLOUD_DAEMON_CONFIG || '{}');
   const { socket, state } = paths();
   const log = (msg) => console.log(`${new Date().toISOString()} ${msg}`);
-  const client = new Client({ relay: cfg.relay, token: cfg.token, transport: cfg.transport });
+  const client = new Client({ relay: cfg.relay, token: cfg.token, transport: cfg.transport, secret: clientSecret() });
   const id = configId(cfg);
   let watcher = null;
   const watchErrors = new Map();
@@ -140,6 +140,7 @@ export async function runDaemon() {
     if (r.error) log(`${r.method} ${r.url} → ${r.error}`);
   });
   client.on('fatal', (err) => log(`fatal: ${err.message}`));
+  client.on('notice', (m) => log(`relay notice: ${m}`));
   client.start();
 
   const shareWithTimeout = (target, opts, ms = 25_000) =>

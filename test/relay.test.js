@@ -587,6 +587,47 @@ describe('long-poll protocol', () => {
   });
 });
 
+describe('relay restarts and proxies', () => {
+  test('a restarted relay gives the client its auto name back and reports a new access URL', async () => {
+    const first = await startRelay();
+    const port = first.port;
+    const app = await localServer((_rq, res) => res.end('back'));
+    const client = newClient(first.url);
+    let second;
+    try {
+      const t = await client.share(String(app.port), { protect: true });
+      assert.match(t.id, /^[a-z]+-[a-z]+-[a-z0-9]{5}$/);
+      const changes = [];
+      client.on('tunnel', (d, { changed }) => changes.push({ d, changed }));
+      await first.relay.close();
+      const { Relay } = await import('../src/relay/server.js');
+      second = new Relay({ domain: 'lc.test', insecure: true });
+      await second.listen({ port, host: '127.0.0.1' });
+      await waitFor(() => changes.length > 0, { message: 'tunnel re-opened', timeout: 15_000 });
+      assert.equal(changes[0].d.url, t.url, 'same auto-generated name');
+      assert.notEqual(changes[0].d.accessUrl, t.accessUrl);
+      assert.equal(changes[0].changed, true, 'the new access URL is reported as a change');
+    } finally {
+      await client.close();
+      await app.stop();
+      await second?.close();
+    }
+  });
+
+  test('trustProxy decides whether X-Forwarded-For is believed', async () => {
+    for (const trustProxy of [true, false]) {
+      const f = await fixture({ relayOpts: { trustProxy } });
+      try {
+        const t = await f.client().share(String(f.app.port));
+        const r = await req(f.port, { host: hostOf(t.url), headers: { 'x-forwarded-for': '198.51.100.7' } });
+        assert.equal(JSON.parse(r.text()).headers['x-forwarded-for'], trustProxy ? '198.51.100.7' : '127.0.0.1');
+      } finally {
+        await f.stop();
+      }
+    }
+  });
+});
+
 describe('relay shutdown', () => {
   test('close() finishes promptly with live clients and browser websockets', async () => {
     const f = await fixture();

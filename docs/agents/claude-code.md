@@ -94,7 +94,7 @@ Cloud sessions load the repo's `.mcp.json` (single-repo sessions). Servers added
 local/user scope live in `~/.claude.json` on your machine and do **not** reach cloud sessions.
 
 Tools: `share_port {port, name?, protect?}`, `get_url {port}`, `list_shared`, `stop_sharing {port}`,
-`auto_share {enabled?}`; resource `localcloud://status`.
+`auto_share {enabled?}`, `status`; resource `localcloud://status`.
 
 ## Allowlisting the relay
 

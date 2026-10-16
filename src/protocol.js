@@ -9,7 +9,7 @@
 export const PROTOCOL_VERSION = 1;
 
 export const T = Object.freeze({
-  HELLO: 1, // client -> relay  {v, token, client}
+  HELLO: 1, // client -> relay  {v, token, instance, client}
   WELCOME: 2, // relay -> client  {ok, error?, version, routing}
   OPEN: 3, // client -> relay  {reqId, name?, secret, protect?, basicAuth?}
   OPENED: 4, // relay -> client  {reqId, ok, id, url, accessUrl?, error?}

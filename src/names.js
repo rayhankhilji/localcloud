@@ -26,10 +26,13 @@ function pick(list) {
   return list[crypto.randomInt(list.length)];
 }
 
-/** e.g. "sunny-otter-x7k2" — friendly, but ~1.6e10 possibilities so not guessable. */
+/**
+ * e.g. "sunny-otter-x7k2m" — friendly, but 64 × 64 × 32^5 ≈ 1.4e11 possibilities,
+ * so scanning for live tunnels is impractical. (Use --protect for real secrecy.)
+ */
 export function generateName() {
   let suffix = '';
-  for (let i = 0; i < 4; i++) suffix += ALPHABET[crypto.randomInt(ALPHABET.length)];
+  for (let i = 0; i < 5; i++) suffix += ALPHABET[crypto.randomInt(ALPHABET.length)];
   return `${pick(ADJECTIVES)}-${pick(NOUNS)}-${suffix}`;
 }
 
